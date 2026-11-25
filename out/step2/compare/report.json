@@ -1,0 +1,68 @@
+{
+ "built": [
+  "01 helmet"
+ ],
+ "kit": [
+  "Hands / Embermine",
+  "Chest / Embermine",
+  "Shoulders / Embermine",
+  "Head / Embermine",
+  "Waist / Embermine",
+  "Feet / Embermine"
+ ],
+ "silhouette": {
+  "front": {
+   "built_iou": 0.767,
+   "kit_iou": 0.911,
+   "built_per_piece": {
+    "01 helmet": 0.919
+   }
+  },
+  "back": {
+   "built_iou": 0.763,
+   "kit_iou": 0.91,
+   "built_per_piece": {
+    "01 helmet": 0.851
+   }
+  },
+  "side": {
+   "built_iou": 0.715,
+   "kit_iou": 0.903,
+   "built_per_piece": {
+    "01 helmet": 0.891
+   }
+  }
+ },
+ "kit_to_built": {
+  "Hands / Embermine": {
+   "mean_mm": 709.1,
+   "p90_mm": 881.3
+  },
+  "Chest / Embermine": {
+   "mean_mm": 319.4,
+   "p90_mm": 475.4
+  },
+  "Shoulders / Embermine": {
+   "mean_mm": 289.0,
+   "p90_mm": 381.1
+  },
+  "Head / Embermine": {
+   "mean_mm": 19.5,
+   "p90_mm": 56.3
+  },
+  "Waist / Embermine": {
+   "mean_mm": 716.2,
+   "p90_mm": 957.2
+  },
+  "Feet / Embermine": {
+   "mean_mm": 1487.3,
+   "p90_mm": 1764.5
+  }
+ },
+ "built_to_kit": {
+  "01 helmet": {
+   "mean_mm": 7.5,
+   "p90_mm": 15.7
+  }
+ }
+}

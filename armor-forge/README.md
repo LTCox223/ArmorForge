@@ -43,6 +43,28 @@ Known gaps: no surface detail (visors, trim, buckles, spikes); helmet is a smoot
 a flat sheet (no side flare); shoulder lames and gorget are small; pieces are not rigged (the
 mannequin's Armature modifiers point at no armature).
 
+## Molded pieces (step 2 prototype: helmet)
+
+For the pieces that have to look good, a piece starts from its own clean cage instead of the body:
+rings around a centre plus an all-quad cap (no poles), each vertex placed on a smooth hull built from
+the drawing (width from front/back, depth from the side, superellipse cross-sections). Features sit
+on real edge loops:
+
+* detail colours in the piece map (`<View>_details.npy`: 20 = visor slit, 21 = trim band) are read
+  along each meridian; trim bands are fitted as smooth curves around the piece and get exactly two
+  rings, slit edges become partial rings across the meridians that see them;
+* every open hem gets a trim band automatically;
+* trim bands are extruded outward, slits are inset and pushed in; Solidify inward; an optional
+  Subdivision Surface modifier is added switched off.
+
+    blender -b ../blender/Embermine_Modular_Geometry.blend -P blender/build_molded.py -- \
+        --labels ../input --cams cams.json --colors ../input/Part_Colors.json \
+        --out ../out/step2/embermine_molded.blend
+
+The Embermine detail grids in `input/` are stand-ins made with `blender/project_details.py` from the
+hand-made helmet (its slit and trim faces projected into the views); in the real pipeline the image
+AI paints these colours. Result: `out/step2/helmet_compare.png` (all quads, manifold, ~430 verts).
+
 ## Rough-in from four-view sheets (earlier approach)
 
 Inputs: a gridded four-view sheet (Front, Back, Side, Side without arms; each panel 2 m x 2 m,
