@@ -1,0 +1,348 @@
+{
+  "asset": "Embermine Vanguard",
+  "source_concept_package": "Embermine_Vanguard_Concept.zip",
+  "reference_id": "armorforge-revised-head-feet-ortho-v1",
+  "artboard_px": [
+    4096,
+    4096
+  ],
+  "world_origin_px": [
+    2048,
+    3712
+  ],
+  "pixels_per_meter": 1600.0,
+  "grid_spacing_m": 0.1,
+  "pixel_origin": "top-left",
+  "format": "8-bit RGBA PNG with solid label colors",
+  "background": {
+    "id": 0,
+    "rgba": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "foreground_alpha": 255,
+  "notes": [
+    "Overlay a mask on the corresponding source concept at pixel position (0, 0) at 100% scale.",
+    "Each foreground pixel represents the visible armor piece at that location.",
+    "Matching left and right pieces share a part ID. Chest and back plates share the cuirass ID.",
+    "If downsampling label masks, use nearest-neighbor sampling to preserve RGB IDs."
+  ],
+  "parts": [
+    {
+      "id": 1,
+      "key": "helmet",
+      "name": "Helmet",
+      "hex": "#F45D59",
+      "rgb": [
+        244,
+        93,
+        89
+      ],
+      "coverage": "Visor, helmet shell and edging"
+    },
+    {
+      "id": 2,
+      "key": "gorget",
+      "name": "Gorget",
+      "hex": "#FFD39B",
+      "rgb": [
+        255,
+        211,
+        155
+      ],
+      "coverage": "Collar and neck guard"
+    },
+    {
+      "id": 3,
+      "key": "cuirass",
+      "name": "Cuirass",
+      "hex": "#3675DE",
+      "rgb": [
+        54,
+        117,
+        222
+      ],
+      "coverage": "Breastplate and backplate, including attached trim"
+    },
+    {
+      "id": 4,
+      "key": "pauldrons",
+      "name": "Pauldrons",
+      "hex": "#8957D4",
+      "rgb": [
+        137,
+        87,
+        212
+      ],
+      "coverage": "Main shoulder shells"
+    },
+    {
+      "id": 5,
+      "key": "shoulder_lames",
+      "name": "Shoulder lames",
+      "hex": "#DC9DF2",
+      "rgb": [
+        220,
+        157,
+        242
+      ],
+      "coverage": "Smaller overlapping plates below the pauldrons"
+    },
+    {
+      "id": 6,
+      "key": "sleeves",
+      "name": "Padded sleeves",
+      "hex": "#92634C",
+      "rgb": [
+        146,
+        99,
+        76
+      ],
+      "coverage": "Exposed sleeves and elbow padding"
+    },
+    {
+      "id": 7,
+      "key": "vambraces",
+      "name": "Vambraces",
+      "hex": "#02BFA6",
+      "rgb": [
+        2,
+        191,
+        166
+      ],
+      "coverage": "Forearm plates and attached cuffs"
+    },
+    {
+      "id": 8,
+      "key": "gauntlets",
+      "name": "Gauntlets",
+      "hex": "#E44999",
+      "rgb": [
+        228,
+        73,
+        153
+      ],
+      "coverage": "Hand plates and gloves"
+    },
+    {
+      "id": 9,
+      "key": "belt",
+      "name": "Belt",
+      "hex": "#F5AD2E",
+      "rgb": [
+        245,
+        173,
+        46
+      ],
+      "coverage": "Waist belt, buckle and leather plate hangers"
+    },
+    {
+      "id": 10,
+      "key": "upper_tassets",
+      "name": "Upper tassets",
+      "hex": "#ED722F",
+      "rgb": [
+        237,
+        114,
+        47
+      ],
+      "coverage": "Small overlapping hip plates"
+    },
+    {
+      "id": 11,
+      "key": "lower_tassets",
+      "name": "Lower tassets",
+      "hex": "#C9D947",
+      "rgb": [
+        201,
+        217,
+        71
+      ],
+      "coverage": "Large hip plates"
+    },
+    {
+      "id": 12,
+      "key": "tabard",
+      "name": "Split tabard",
+      "hex": "#AD2857",
+      "rgb": [
+        173,
+        40,
+        87
+      ],
+      "coverage": "Front and rear hanging cloth panels"
+    },
+    {
+      "id": 13,
+      "key": "thigh_plates",
+      "name": "Thigh plates",
+      "hex": "#8B88C8",
+      "rgb": [
+        139,
+        136,
+        200
+      ],
+      "coverage": "Exposed armored bands on the thighs"
+    },
+    {
+      "id": 14,
+      "key": "knee_guards",
+      "name": "Knee guards",
+      "hex": "#FFE872",
+      "rgb": [
+        255,
+        232,
+        114
+      ],
+      "coverage": "Knee caps and visible side wings"
+    },
+    {
+      "id": 15,
+      "key": "greaves",
+      "name": "Greaves",
+      "hex": "#2DAD67",
+      "rgb": [
+        45,
+        173,
+        103
+      ],
+      "coverage": "Shin and calf shells with attached cuff plates"
+    },
+    {
+      "id": 16,
+      "key": "boots",
+      "name": "Armored boots",
+      "hex": "#6AD0F0",
+      "rgb": [
+        106,
+        208,
+        240
+      ],
+      "coverage": "Sabatons and boot uppers"
+    },
+    {
+      "id": 17,
+      "key": "undersuit",
+      "name": "Undersuit",
+      "hex": "#535F70",
+      "rgb": [
+        83,
+        95,
+        112
+      ],
+      "coverage": "Visible foundation fabric, joints and armhole lining"
+    }
+  ],
+  "views": {
+    "Front": {
+      "mask": "Masks/Front.png",
+      "source_concept_overlay": "Overlays/Front.png",
+      "projection": {
+        "u_px": "2048 + 1600 \u00d7 (+X)",
+        "v_px": "3712 \u2212 1600 \u00d7 Z"
+      },
+      "right_axis": "+X",
+      "visible_part_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ]
+    },
+    "Back": {
+      "mask": "Masks/Back.png",
+      "source_concept_overlay": "Overlays/Back.png",
+      "projection": {
+        "u_px": "2048 + 1600 \u00d7 (\u2212X)",
+        "v_px": "3712 \u2212 1600 \u00d7 Z"
+      },
+      "right_axis": "\u2212X",
+      "visible_part_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ]
+    },
+    "Side": {
+      "mask": "Masks/Side.png",
+      "source_concept_overlay": "Overlays/Side.png",
+      "projection": {
+        "u_px": "2048 + 1600 \u00d7 (+Y)",
+        "v_px": "3712 \u2212 1600 \u00d7 Z"
+      },
+      "right_axis": "+Y",
+      "visible_part_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ]
+    },
+    "Side_Without_Arms": {
+      "mask": "Masks/Side_Without_Arms.png",
+      "source_concept_overlay": "Overlays/Side_Without_Arms.png",
+      "projection": {
+        "u_px": "2048 + 1600 \u00d7 (+Y)",
+        "v_px": "3712 \u2212 1600 \u00d7 Z"
+      },
+      "right_axis": "+Y",
+      "visible_part_ids": [
+        1,
+        2,
+        3,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ]
+    }
+  }
+}
