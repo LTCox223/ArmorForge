@@ -43,6 +43,18 @@ Known gaps: no surface detail (visors, trim, buckles, spikes); helmet is a smoot
 a flat sheet (no side flare); shoulder lames and gorget are small; pieces are not rigged (the
 mannequin's Armature modifiers point at no armature).
 
+## Helmet from the concept (shape only, current focus)
+
+    blender -b -P blender/build_helmet.py -- --masks ../input/Masks --cams cams.json --out ../out/helmet
+
+Builds just the helmet, no mannequin and no surface features, as a loft of horizontal slices:
+outlines from the full-resolution masks, smoothed hard but never across the brow step; plan shape
+round at the back, boxy with a centre "beak" in the visor zone, blending to round above the brow;
+crown closes along the comb ridge; hem smoothed around the loop. Visor centre line and brow are
+creased for the Subdivision modifier. Tweak with `--param beak=0.3 n_visor=3.5 ...`
+(`HelmetParams` in `armor_forge/helmet.py`). Output: `helmet.blend`, renders, and
+`overlay.png` (the built outline traced in red on the concept art).
+
 ## Molded pieces (step 2 prototype: helmet)
 
 For the pieces that have to look good, a piece starts from its own clean cage instead of the body:
