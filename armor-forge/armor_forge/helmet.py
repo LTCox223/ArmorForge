@@ -256,6 +256,22 @@ def smooth_hem(theta, z_raw, order=3, iters=4):
     return A @ coef
 
 
+def slicer(P, p: HelmetParams, K=None):
+    """-> function z -> (X, Y): the plan (top-down) shape of the helmet at height z, K points."""
+    K = K or p.K
+    zz, a_, yf_, yb_, brow = P["z"], P["a"], P["yf"], P["yb"], P["brow"]
+    t_fine = np.linspace(0, 2 * np.pi, 721)[:-1]
+
+    def slice_at(z):
+        a = np.interp(z, zz, a_)
+        yf, yb = np.interp(z, zz, yf_), np.interp(z, zz, yb_)
+        w = np.clip((brow - z) / p.brow_blend + 0.5, 0, 1)          # 1 in the visor, 0 above the brow
+        nf = w * p.n_visor + (1 - w) * p.n_skull
+        x, y = plan_curve(a, yf, yb, t_fine, nf, p.n_back, p.beak * w)
+        return resample_closed(x, y, K)
+    return slice_at
+
+
 def build(o: Outlines, p: HelmetParams = HelmetParams()):
     """-> verts (N, 3), quad faces, info dict."""
     K = p.K
@@ -266,15 +282,7 @@ def build(o: Outlines, p: HelmetParams = HelmetParams()):
     a_, yf_, yb_ = P["a"], P["yf"], P["yb"]
     arc = np.concatenate([[0], np.cumsum(np.hypot(np.diff(zz), np.hypot(np.diff(a_), np.diff(yf_))))])
     n_rings = max(4, int(np.ceil(arc[-1] / p.ring_spacing)))
-    t_fine = np.linspace(0, 2 * np.pi, 721)[:-1]
-
-    def slice_at(z):
-        a = np.interp(z, zz, a_)
-        yf, yb = np.interp(z, zz, yf_), np.interp(z, zz, yb_)
-        w = np.clip((brow - z) / p.brow_blend + 0.5, 0, 1)          # 1 in the visor, 0 above the brow
-        nf = w * p.n_visor + (1 - w) * p.n_skull
-        x, y = plan_curve(a, yf, yb, t_fine, nf, p.n_back, p.beak * w)
-        return resample_closed(x, y, K)
+    slice_at = slicer(P, p)
 
     # ring parameter u in [0, 1]: u = 0 at the hem (varies around), 1 at the top ridge
     us = np.interp(np.linspace(0, arc[-1], n_rings + 1), arc, np.linspace(0, 1, len(zz)))

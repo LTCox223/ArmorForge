@@ -55,6 +55,30 @@ creased for the Subdivision modifier. Tweak with `--param beak=0.3 n_visor=3.5 .
 (`HelmetParams` in `armor_forge/helmet.py`). Output: `helmet.blend`, renders, and
 `overlay.png` (the built outline traced in red on the concept art).
 
+**Outlines traced from the art** (`armor_forge/concept.py`). The masks only guide; the edge comes
+from the concept sheet itself. Each view's mask artboard is registered onto its concept panel
+(scale + offset fitted on the whole figure), the art's darkness is resampled smoothly into the mask
+frame (sub-pixel edges), and the piece is taken where the art is painted, within a reach band around
+its mask and never into another piece's colour. Thin grid lines are opened away. Output masks are in
+the original frame, so `build_helmet.py --masks <traced>` uses them unchanged.
+
+    python tools/trace_concept.py --art "../reference/Embermine Heavy Armor Turnaround.png" \
+        --masks ../input/Masks --cams cams.json --out ../out/helmet/traced
+    python tools/trace_overlay.py --art "../reference/Embermine Heavy Armor Turnaround.png" \
+        --masks ../input/Masks --traced ../out/helmet/traced --out ../out/helmet/trace_overlay.png
+
+On Embermine the masks were already within 1-2 mm of the painted edge wherever the helmet meets the
+background; where it meets the neck and gorget the edge is not a silhouette and stays as masked.
+
+**Pick the curvature by eye** (`blender/helmet_variants.py`). The outlines don't decide how round or
+boxy the helmet is between the views; this renders a 3 x 3 grid over any two `HelmetParams`, each cell
+a three-quarter render plus plan cuts at visor and skull heights, with the concept beside it:
+
+    blender -b -P blender/helmet_variants.py -- --masks ../out/helmet/traced --cams cams.json \
+        --art "../reference/Embermine Heavy Armor Turnaround.png" \
+        --trace-meta ../out/helmet/traced/trace.json \
+        --rows beak=0.2,0.45,0.7 --cols n_visor=2.5,4,6 --out ../out/helmet/variants_visor.png
+
 ## Molded pieces (step 2 prototype: helmet)
 
 For the pieces that have to look good, a piece starts from its own clean cage instead of the body:
