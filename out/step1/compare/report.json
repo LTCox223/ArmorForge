@@ -1,0 +1,196 @@
+{
+ "built": [
+  "01 helmet",
+  "02 gorget",
+  "03 cuirass",
+  "04 pauldrons",
+  "05 shoulder_lames",
+  "06 sleeves",
+  "07 vambraces",
+  "08 gauntlets",
+  "09 belt",
+  "10 upper_tassets",
+  "11 lower_tassets",
+  "13 thigh_plates",
+  "14 knee_guards",
+  "15 greaves",
+  "16 boots",
+  "17 undersuit",
+  "12 tabard"
+ ],
+ "kit": [
+  "Hands / Embermine",
+  "Chest / Embermine",
+  "Shoulders / Embermine",
+  "Head / Embermine",
+  "Waist / Embermine",
+  "Feet / Embermine"
+ ],
+ "silhouette": {
+  "front": {
+   "built_iou": 0.925,
+   "kit_iou": 0.911,
+   "built_per_piece": {
+    "01 helmet": 0.906,
+    "02 gorget": 0.244,
+    "03 cuirass": 0.82,
+    "04 pauldrons": 0.712,
+    "05 shoulder_lames": 0.072,
+    "06 sleeves": 0.725,
+    "07 vambraces": 0.843,
+    "08 gauntlets": 0.836,
+    "09 belt": 0.781,
+    "10 upper_tassets": 0.512,
+    "11 lower_tassets": 0.64,
+    "12 tabard": 0.935,
+    "13 thigh_plates": 0.675,
+    "14 knee_guards": 0.831,
+    "15 greaves": 0.785,
+    "16 boots": 0.829,
+    "17 undersuit": 0.329
+   }
+  },
+  "back": {
+   "built_iou": 0.924,
+   "kit_iou": 0.91,
+   "built_per_piece": {
+    "01 helmet": 0.854,
+    "02 gorget": 0.299,
+    "03 cuirass": 0.823,
+    "04 pauldrons": 0.518,
+    "05 shoulder_lames": 0.182,
+    "06 sleeves": 0.723,
+    "07 vambraces": 0.831,
+    "08 gauntlets": 0.815,
+    "09 belt": 0.569,
+    "10 upper_tassets": 0.401,
+    "11 lower_tassets": 0.692,
+    "12 tabard": 0.928,
+    "13 thigh_plates": 0.678,
+    "14 knee_guards": 0.268,
+    "15 greaves": 0.861,
+    "16 boots": 0.824,
+    "17 undersuit": 0.464
+   }
+  },
+  "side": {
+   "built_iou": 0.866,
+   "kit_iou": 0.903,
+   "built_per_piece": {
+    "01 helmet": 0.885,
+    "02 gorget": 0.363,
+    "03 cuirass": 0.593,
+    "04 pauldrons": 0.743,
+    "05 shoulder_lames": 0.363,
+    "06 sleeves": 0.492,
+    "07 vambraces": 0.435,
+    "08 gauntlets": 0.153,
+    "09 belt": 0.301,
+    "10 upper_tassets": 0.118,
+    "11 lower_tassets": 0.512,
+    "12 tabard": 0.01,
+    "13 thigh_plates": 0.764,
+    "14 knee_guards": 0.707,
+    "15 greaves": 0.766,
+    "16 boots": 0.812,
+    "17 undersuit": 0.418
+   }
+  }
+ },
+ "kit_to_built": {
+  "Hands / Embermine": {
+   "mean_mm": 6.3,
+   "p90_mm": 13.4
+  },
+  "Chest / Embermine": {
+   "mean_mm": 6.0,
+   "p90_mm": 14.2
+  },
+  "Shoulders / Embermine": {
+   "mean_mm": 13.3,
+   "p90_mm": 24.6
+  },
+  "Head / Embermine": {
+   "mean_mm": 9.8,
+   "p90_mm": 27.3
+  },
+  "Waist / Embermine": {
+   "mean_mm": 14.0,
+   "p90_mm": 28.4
+  },
+  "Feet / Embermine": {
+   "mean_mm": 7.1,
+   "p90_mm": 16.8
+  }
+ },
+ "built_to_kit": {
+  "01 helmet": {
+   "mean_mm": 6.3,
+   "p90_mm": 13.0
+  },
+  "02 gorget": {
+   "mean_mm": 10.0,
+   "p90_mm": 15.5
+  },
+  "03 cuirass": {
+   "mean_mm": 13.4,
+   "p90_mm": 23.2
+  },
+  "04 pauldrons": {
+   "mean_mm": 14.5,
+   "p90_mm": 31.1
+  },
+  "05 shoulder_lames": {
+   "mean_mm": 15.4,
+   "p90_mm": 25.2
+  },
+  "06 sleeves": {
+   "mean_mm": 8.6,
+   "p90_mm": 12.3
+  },
+  "07 vambraces": {
+   "mean_mm": 4.9,
+   "p90_mm": 8.3
+  },
+  "08 gauntlets": {
+   "mean_mm": 10.4,
+   "p90_mm": 15.7
+  },
+  "09 belt": {
+   "mean_mm": 12.6,
+   "p90_mm": 23.4
+  },
+  "10 upper_tassets": {
+   "mean_mm": 8.1,
+   "p90_mm": 20.1
+  },
+  "11 lower_tassets": {
+   "mean_mm": 27.0,
+   "p90_mm": 51.6
+  },
+  "13 thigh_plates": {
+   "mean_mm": 21.0,
+   "p90_mm": 26.6
+  },
+  "14 knee_guards": {
+   "mean_mm": 12.1,
+   "p90_mm": 20.6
+  },
+  "15 greaves": {
+   "mean_mm": 7.5,
+   "p90_mm": 16.9
+  },
+  "16 boots": {
+   "mean_mm": 6.6,
+   "p90_mm": 13.8
+  },
+  "17 undersuit": {
+   "mean_mm": 1.9,
+   "p90_mm": 2.5
+  },
+  "12 tabard": {
+   "mean_mm": 26.0,
+   "p90_mm": 54.8
+  }
+ }
+}

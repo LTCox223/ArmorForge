@@ -7,7 +7,43 @@ reconstructing 3D from a picture, we take the picture's *outline* of each armor 
 body surface underneath it, lift that surface off the skin, and give it thickness. The result
 already shares the body's skin weights and rig. You then refine it by hand.
 
-## Rough-in from four-view sheets (current approach)
+## Body-shell set from a piece map (current approach, step 1)
+
+The AI makes the art; the scripts make the pieces. Input is a flat-colour piece map (four views,
+one colour per piece, like `input/Masks` + `input/Part_Colors.json`). Every piece is built from a
+clean mesh and only its vertices move, so no new topology is invented:
+
+| Piece kind | Built from | Pieces (Embermine) |
+|---|---|---|
+| `shell` | the mannequin's own faces under the drawing, hem snapped to the outline, lifted along normals to the outline (visual hull) | plates, sleeves, belt, gauntlets, boots |
+| `hanging` | a quad grid following the outline row by row, one depth per row clear of what is underneath | tabard |
+| `base` | the whole body except the sections a piece replaces (head, hands, feet) | undersuit |
+
+    python tools/masks_to_labels.py --masks ../input/Masks --colors ../input/Part_Colors.json --out ../input
+    blender -b ../blender/Embermine_Modular_Geometry.blend -P blender/build_shell_set.py -- \
+        --labels ../input --cams cams.json --colors ../input/Part_Colors.json \
+        --out ../out/step1/embermine_shells.blend
+
+Pieces land in a new collection `ArmorForge · <name>` (half body with Mirror + Solidify modifiers, a
+flat material per piece). The opened .blend is never overwritten. Per-piece settings (kind, skin gap,
+max lift, thickness) are in `PIECES` in `armor_forge/shellfit.py`; the layer order (what lies over what)
+is `UNDER` there.
+
+Check a build against the drawing and a hand-made kit:
+
+    blender -b ../out/step1/embermine_shells.blend -P blender/compare_to_kit.py -- \
+        --set "ArmorForge · Embermine" --kit-scene "Embermine modular fitting" \
+        --labels ../input --cams cams.json --colors ../input/Part_Colors.json --out ../out/step1/compare
+    blender -b ../out/step1/embermine_shells.blend -P blender/render_set.py -- \
+        --collection "ArmorForge · Embermine" --out ../out/step1/renders --prefix shells --lens 85
+
+Embermine result (`out/step1/`): outline match (IoU with the drawn silhouette) 0.92 front/back, 0.87
+side; the hand-made kit scores 0.91 / 0.90. Kit surfaces lie 6-14 mm (mean) from the built ones.
+Known gaps: no surface detail (visors, trim, buckles, spikes); helmet is a smooth dome; the tabard is
+a flat sheet (no side flare); shoulder lames and gorget are small; pieces are not rigged (the
+mannequin's Armature modifiers point at no armature).
+
+## Rough-in from four-view sheets (earlier approach)
 
 Inputs: a gridded four-view sheet (Front, Back, Side, Side without arms; each panel 2 m x 2 m,
 x -1..+1 m, z 0..2 m) of the AI-drawn armor, the same sheet rendered for the bare mannequin, and
@@ -98,8 +134,9 @@ Run tests: `pip install -r requirements-dev.txt && pytest`
 
 - `armor_forge/` (sheet reading, carving, meshing) has unit tests; `tools/carve_sheet.py` was run on a real
   sheet pair. `tools/blend_audit.py` reads Blender 3.x-5.x files.
-- `blender/*.py` are written against the Blender 4.3 Python API but have **not been run inside
-  Blender yet**. Expect to fix small API issues on first run.
+- `blender/build_shell_set.py`, `compare_to_kit.py` and `render_set.py` run headless in Blender 5.1
+  (also as the `bpy` 5.1.2 module from PyPI). `blender/fit_shell.py` is superseded by
+  `build_shell_set.py` and has not been run.
 
 ## Roadmap
 
