@@ -235,4 +235,5 @@ def main():
     print("armor-forge: wrote", a.out)
 
 
-main()
+if __name__ == "__main__":
+    main()

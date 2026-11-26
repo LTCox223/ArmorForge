@@ -55,17 +55,20 @@ def project(P, view, turn=0.0, centre=None):
     return u, P[..., 2]
 
 
-def make_view(name, full_mask, cam, gold_full=None, side=+1, ds=4, n_gold=600, seed=0, in_front=None):
+def make_view(name, full_mask, cam, gold_full=None, side=+1, ds=4, n_gold=600, seed=0, in_front=None,
+              edge_band=None):
     """full_mask: the piece's colour in the artboard frame (4096 px, 1600 px/m). side=+1 keeps the
     wearer's left (+x) part in the front and back views. gold_full: trim pixels (same frame).
     in_front: colours of pieces that overlap this one (e.g. the cap over a lame); the plate may
-    reach under them without penalty."""
+    reach under them without penalty. side=0 keeps both halves (pieces on the centre line).
+    edge_band: keep only trim pixels within this distance (m) of the piece's outline (so decorative
+    gold inside a plate does not count as its edge)."""
     m = full_mask.copy()
     c0, r0 = cam
     c = int(c0)
-    if (name == "front" and side > 0) or (name == "back" and side < 0):
+    if side and ((name == "front" and side > 0) or (name == "back" and side < 0)):
         m[:, :c] = False                 # keep u > 0
-    elif name in ("front", "back"):
+    elif side and name in ("front", "back"):
         m[:, c:] = False                 # keep u < 0
     H, W = m.shape
     small = m[:H - H % ds, :W - W % ds].reshape(H // ds, ds, W // ds, ds).mean((1, 3)) > 0.5
@@ -76,6 +79,9 @@ def make_view(name, full_mask, cam, gold_full=None, side=+1, ds=4, n_gold=600, s
     gold = np.zeros((0, 2))
     if gold_full is not None:
         g = gold_full & ndi.binary_dilation(m, iterations=8)
+        if edge_band:
+            r_ = int(edge_band * S)
+            g &= ~ndi.binary_erosion(m, iterations=r_)
         gy, gx = np.nonzero(g)
         if len(gx):
             sel = np.random.default_rng(seed).choice(len(gx), min(n_gold, len(gx)), replace=False)
@@ -173,14 +179,70 @@ def _seg_dist(P, A, B):
 
 
 @dataclass
+class BodyProfile:
+    """The body under a plate as a stack of elliptical cross-sections (e.g. the mannequin's torso):
+    half-width a(z), centre y yc(z), half-depth b(z)."""
+    z: np.ndarray
+    a: np.ndarray
+    yc: np.ndarray
+    b: np.ndarray
+    gap: float = 0.02        # the plate stays at least this far off the body
+    max_off: float = 0.035   # ...and no more than this beyond the gap (it wraps the body)
+
+    def inside(self, P):
+        """How far points are inside the body + gap (0 outside; ~1 at the centre)."""
+        z = P[..., 2]
+        a = np.interp(z, self.z, self.a) + self.gap
+        b = np.interp(z, self.z, self.b) + self.gap
+        yc = np.interp(z, self.z, self.yc)
+        r2 = (P[..., 0] / a) ** 2 + ((P[..., 1] - yc) / b) ** 2
+        inz = (z >= self.z.min()) & (z <= self.z.max())
+        return np.where(inz, np.clip(1 - np.sqrt(r2), 0, None), 0.0)
+
+    def too_far(self, P):
+        """How far (m) points stand off beyond gap + max_off (0 if closer)."""
+        z = P[..., 2]
+        a = np.interp(z, self.z, self.a) + self.gap
+        b = np.interp(z, self.z, self.b) + self.gap
+        yc = np.interp(z, self.z, self.yc)
+        dx, dy = P[..., 0], P[..., 1] - yc
+        r = np.sqrt((dx / a) ** 2 + (dy / b) ** 2)
+        d = np.hypot(dx, dy) * (1 - 1 / np.maximum(r, 1e-9))
+        inz = (z >= self.z.min()) & (z <= self.z.max())
+        return np.where(inz, np.clip(d - self.max_off, 0, None), 0.0)
+
+
+def body_from_mesh(V, T, z_range, step=0.02):
+    """Elliptical cross-sections of a mesh (its edges cut every `step` metres)."""
+    E = {tuple(sorted(e)) for t in T for e in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0]))}
+    E = np.array(sorted(E))
+    zs, a, yc, b = [], [], [], []
+    for z in np.arange(z_range[0], z_range[1] + 1e-9, step):
+        A, B = V[E[:, 0]], V[E[:, 1]]
+        m = (A[:, 2] - z) * (B[:, 2] - z) <= 0
+        if not m.any():
+            continue
+        A, B = A[m], B[m]
+        t = (z - A[:, 2]) / np.where(B[:, 2] != A[:, 2], B[:, 2] - A[:, 2], 1)
+        P = A + (B - A) * t[:, None]
+        zs.append(z)
+        a.append(np.abs(P[:, 0]).max())
+        yc.append(0.5 * (P[:, 1].min() + P[:, 1].max()))
+        b.append(0.5 * (P[:, 1].max() - P[:, 1].min()))
+    return BodyProfile(np.array(zs), np.array(a), np.array(yc), np.array(b))
+
+
+@dataclass
 class FitWeights:
     trim: float = 8.0       # per metre of mean distance from trim pixels to the edge loop
     fold: float = 5.0
     length: float = 0.3     # per metre of edge loop
     trim_cap: float = 0.03  # distances clipped here (trim drawn on other pieces nearby)
+    body: float = 20.0      # per unit of mean penetration into the body + gap
+    hug: float = 40.0       # per metre of mean stand-off beyond the body's max_off
 
 
-def score(plate: Plate, views, w=FitWeights(), detail=False):
+def score(plate: Plate, views, w=FitWeights(), detail=False, body: BodyProfile = None):
     Sm = plate.surface(np.linspace(0, 1, 9), np.linspace(0, 1, 13))
     loop = _loop(Sm)
     centre = plate.centre()
@@ -208,14 +270,22 @@ def score(plate: Plate, views, w=FitWeights(), detail=False):
     length = float(np.linalg.norm(np.diff(loop, axis=0), axis=1).sum())
     tot += w.fold * fold + w.length * length
     out.update(fold=fold, length=length)
+    if body is not None:
+        pen = float(body.inside(Sm).mean())
+        far = float(body.too_far(Sm).mean())
+        tot += w.body * pen + w.hug * far
+        out["body"] = pen
+        out["standoff_mm"] = far * 1000
     return (tot, out) if detail else tot
 
 
 def fit(views, init: Plate, w=FitWeights(), maxiter=6000, symmetric=True, sym_axis=1, fit_turn=False,
-        turn_max=np.radians(25)):
+        turn_max=np.radians(25), body: BodyProfile = None, extra=None):
     """Fit the plate. symmetric: mirror-symmetric about a plane normal to sym_axis (pauldron front /
     back: 1), which also keeps the side view's drawing cheats from bending it. fit_turn: also fit the
-    side view's turn (the views' `turn` is the start). -> (plate, turn)."""
+    side view's turn (the views' `turn` is the start). body: keep off / close to the body.
+    extra(plate) -> penalty: piece-specific rules (e.g. where its edges must meet another plate).
+    -> (plate, turn)."""
     from scipy.optimize import minimize
     side = [vw for vw in views if vw.name == "side"]
     turn0 = side[0].turn if side else 0.0
@@ -232,8 +302,11 @@ def fit(views, init: Plate, w=FitWeights(), maxiter=6000, symmetric=True, sym_ax
         if fit_turn and side:
             for vw in side:
                 vw.turn = x[-1]
-            return score(make(x[:-1]), views, w) + 5.0 * max(0.0, abs(x[-1]) - turn_max)
-        return score(make(x), views, w)
+            p_ = make(x[:-1])
+            return (score(p_, views, w, body=body) + 5.0 * max(0.0, abs(x[-1]) - turn_max)
+                    + (extra(p_) if extra else 0.0))
+        p_ = make(x)
+        return score(p_, views, w, body=body) + (extra(p_) if extra else 0.0)
     res = minimize(f, x0, method="Powell", options=dict(maxiter=maxiter, xtol=1e-4, ftol=1e-5))
     if fit_turn and side:
         turn = float(res.x[-1])
@@ -279,6 +352,60 @@ def init_from_views(front_mask, back_mask, side_mask, cams, side=+1):
     return Plate(c00, c10, c01, c11,
                  m_u0=2 * top0 - 0.5 * (c00 + c01), m_u1=2 * top1 - 0.5 * (c10 + c11),
                  m_v0=0.5 * (c00 + c10) + [0, -0.02, 0], m_v1=0.5 * (c01 + c11) + [0, 0.02, 0])
+
+
+def seam_rule(y_seam, side=-1, overlap=0.01, weight=2000.0):
+    """Penalty keeping a wrapped plate's side edges (v = 0 and v = 1) at the depth where it meets the
+    opposite plate: y_seam, reaching `overlap` past it (side -1: a breastplate, in front; +1: a
+    backplate)."""
+    target = y_seam - side * overlap
+
+    def rule(plate: Plate):
+        E = plate.surface(np.linspace(0, 1, 9), [0.0, 1.0])
+        return weight * float(np.mean((E[..., 1] - target) ** 2))
+    return rule
+
+
+def init_wrap(face_mask, side_mask, cams, view="front", y_side=None):
+    """Starting plate for a piece wrapped round the torso and centred on x = 0 (a breastplate:
+    view "front"; a backplate: "back"). u runs top -> bottom, v from the wearer's right (-x in the
+    front view) to left; depth from the matching half of the side view (front-most / back-most y at
+    each height for the centre line, the side view's middle for the side edges)."""
+    sgn = 1 if view == "front" else -1
+    r, c = np.nonzero(face_mask)
+    x = (c + .5 - cams[view][0]) / S * sgn
+    z = (cams[view][1] - r - .5) / S
+    sr, sc = np.nonzero(side_mask)
+    sy = (sc + .5 - cams["side"][0]) / S
+    sz = (cams["side"][1] - sr - .5) / S
+    z_top, z_bot = np.percentile(z, 99), np.percentile(z, 1)
+    z_mid = 0.5 * (z_top + z_bot)
+
+    def half_width(zz):
+        k = np.abs(z - zz) < 0.01
+        return float(np.percentile(np.abs(x[k]), 95)) if k.any() else 0.1
+
+    def y_centre(zz):
+        zz = np.clip(zz, sz.min() + 0.005, sz.max() - 0.005)
+        k = np.abs(sz - zz) < 0.01
+        return float(sy[k].min() if view == "front" else sy[k].max())
+    y_side = float(np.median(sy)) if y_side is None else y_side
+    corners = {}
+    for key, zz in (("t", z_top - 0.01), ("b", z_bot + 0.01)):
+        corners[key] = np.array([-half_width(zz), y_side, zz])
+
+    def mirror(p):
+        return p * [-1, 1, 1]
+
+    def through(P, a, b):
+        return 2 * P - 0.5 * (a + b)
+    c00, c10 = corners["t"], corners["b"]
+    c01, c11 = mirror(c00), mirror(c10)
+    top_c = np.array([0.0, y_centre(z_top - 0.01), z_top - 0.01])
+    bot_c = np.array([0.0, y_centre(z_bot + 0.01), z_bot + 0.01])
+    side_l = np.array([-half_width(z_mid), y_side, z_mid])
+    return Plate(c00, c10, c01, c11, m_u0=through(top_c, c00, c01), m_u1=through(bot_c, c10, c11),
+                 m_v0=through(side_l, c00, c10), m_v1=through(mirror(side_l), c01, c11))
 
 
 def continue_from(above: Plate, u0=0.85, u1=1.35):

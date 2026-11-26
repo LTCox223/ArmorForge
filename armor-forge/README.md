@@ -193,6 +193,20 @@ lip), renders, `concept_vs_pauldrons.png` (fitted edge loop red, creases blue, o
 side), edge within 9-11 mm of the trim; lame 0.87 / 0.78 / 0.90. Crease positions are fixed defaults for now (`PanelLayout`).
 Takes about two minutes (the fit).
 
+**Cuirass, first attempt** (`blender/build_chest.py`). Breastplate and backplate as two trimmed
+plates (left/right symmetric): the breastplate fitted to the front view and the front half of the
+side view, the backplate to the back view and the back half; anything drawn over them (gorget,
+pauldrons, belt, arms) may hide them; only gold near the outline counts as trim (the chest's gold
+chevron is decoration). The arm hides most of the side view, so the mannequin's torso guides the
+depth (`plate.BodyProfile`: stay 2 cm off it, no more than 3.5 cm beyond that). Embermine: front IoU
+0.96, back 0.94. Known limit: a four-sided plate can't make armholes, so the plates don't wrap round
+to meet at the sides; the cuirass needs its own model (neckline, shoulder straps, armholes, side
+seams, waist).
+
+    blender -b -P armor-forge/blender/build_chest.py -- --masks input/Masks --cams armor-forge/cams.json \
+        --art "reference/Embermine Heavy Armor Turnaround.png" --trace-meta out/helmet/traced/trace.json \
+        --mannequin armor-forge/mannequin.json --out out/chest
+
 **Artistic depth (the side view is drawn slightly turned).** Concept artists turn pieces a little
 toward the viewer in the side view to show depth, so its interior lines and trim show faces a true
 side view would hide. Taken literally, that bends plates (the pauldron's front edge curled back). So:
