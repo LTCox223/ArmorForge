@@ -98,6 +98,23 @@ Embermine: IoU against the traced outlines 0.93 front, 0.92 side, 0.85 back; vis
 625. Not yet: the brow band and neck-guard rim as their own bands, the comb as its own crest (the dome
 top is pointed because the comb is part of the outline), eye slot and slits.
 
+**Sheets with no masks and no side view** (`armor_forge/nomask.py`, `tools/helmet_from_sheet.py`).
+For a sheet like Thornwood (front and back panels on a metric grid only): the scale comes from the
+evenly spaced grid lines (`--grid-m`, bottom line = 0 m), `u = 0` from the figure's mirror axis, the
+helmet is the figure above the rim (the biggest inward step of the central width between the head's
+widest row and the shoulders), and the missing side view is a stand-in that keeps the head target's
+depth-to-width ratio (`head_target.json`, SkullTarget sliced). The masks land in the usual artboard
+frame, so `build_helmet.py` reads them:
+
+    python tools/helmet_from_sheet.py --art "../blender/Thornwood knight armor turnaround.png" \
+        --front 10,880 --back 890,1760 --out ../out/thornwood/masks
+    blender -b -P blender/build_helmet.py -- --masks ../out/thornwood/masks \
+        --cams ../out/thornwood/masks/cams.json --out ../out/thornwood/helmet
+
+Thornwood result (`out/thornwood/concept_vs_helmet.png`): front/back silhouette right (crest,
+brow, rim), side profile guessed; the small flame spikes are smoothed away, the visor's lower tips
+(which hang over the gorget) are cut off, and the parts builder can't run (it needs a side view).
+
 **Pick the curvature by eye** (`blender/helmet_variants.py`). The outlines don't decide how round or
 boxy the helmet is between the views; this renders a 3 x 3 grid over any two `HelmetParams`, each cell
 a three-quarter render plus plan cuts at visor and skull heights, with the concept beside it:
