@@ -174,26 +174,24 @@ Thornwood result (`out/thornwood/concept_vs_helmet.png`): front/back silhouette 
 brow, rim), side profile guessed; the small flame spikes are smoothed away, the visor's lower tips
 (which hang over the gorget) are cut off, and the parts builder can't run (it needs a side view).
 
-**Pauldrons** (`armor_forge/pauldron.py`, `blender/build_pauldrons.py`). Each pauldron is a cap
-plus lame(s), each a clean quad grid with open edges; built for the left (+x) and mirrored:
-
-* the arm as drawn (sleeve + vambrace colours) gives the arm axis and radius - the concept's arm need
-  not match the mannequin's pose;
-* cap: rays from the shoulder joint (the axis point under the cap) over a grid running neck -> over
-  the top -> down the arm (rows) and front -> back (columns); the cap's visual hull (its colour in
-  front, back and side) gives the surface, and it covers where the hull reaches clearly beyond the
-  shoulder;
-* lames: the same around the arm axis (rows along the arm, columns around it); the top row reaches
-  `overlap` up under the cap and stays `tuck` inside it.
+**Pauldrons as trimmed plates** (`armor_forge/plate.py`, `blender/build_pauldrons.py`). Plates in
+these concepts have a trim band round their edge and show their curvature as a few creases between
+flat panels, so each piece (cap, lame) is a four-sided plate: four edge curves with a smooth surface
+stretched between them, fitted to the piece's own colour in the front, back and side views (no arm)
+and to its gold trim (the edge loop should land on it). The lame starts from the cap continued down
+the arm and may reach under the cap. Each plate is built low-poly like a hand-made base: flat panels
+split at crease lines (sharp edges, flat shading), a raised rim on the edge, a lip on the cap's neck
+edge, Solidify for thickness; built for the left and mirrored.
 
     blender -b -P armor-forge/blender/build_pauldrons.py -- --masks input/Masks --cams armor-forge/cams.json \
-        --mannequin armor-forge/mannequin.json --art "reference/Embermine Heavy Armor Turnaround.png" \
-        --trace-meta out/helmet/traced/trace.json --out out/pauldrons
+        --art "reference/Embermine Heavy Armor Turnaround.png" --trace-meta out/helmet/traced/trace.json \
+        --mannequin armor-forge/mannequin.json --out out/pauldrons
 
-Output: `pauldrons.blend` (collection "Pauldrons": cap and lame 1, L and R; "Reference": the torso
-and the drawn arm), renders and `concept_vs_pauldrons.png` (the built outline in red on the concept).
-Embermine: IoU 0.78 front / 0.81 back / 0.78 side. `mannequin.json` is the GunHound fitting body
-exported from `blender/Embermine_Modular_Geometry.blend`.
+Output: `pauldrons.blend` (collection "Pauldrons": cap and lame 1, L and R, materials panel / rim /
+lip), renders, `concept_vs_pauldrons.png` (fitted edge loop red, creases blue, on the concept),
+`pauldrons.json`. Embermine: cap IoU 0.84 / 0.91 / 0.91 (front / back / side), edge within 6-9 mm of
+the trim; lame 0.83 / 0.84 / 0.97. Crease positions are fixed defaults for now (`PanelLayout`).
+Takes about two minutes (the fit).
 
 **Pick the curvature by eye** (`blender/helmet_variants.py`). The outlines don't decide how round or
 boxy the helmet is between the views; this renders a 3 x 3 grid over any two `HelmetParams`, each cell

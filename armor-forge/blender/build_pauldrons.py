@@ -1,13 +1,15 @@
-"""Build the pauldrons (cap + lames, left and right) from the piece map and the mannequin.
+"""Build the pauldrons as trimmed plates (cap + lame, left and right) fitted to the concept.
 
     blender -b -P armor-forge/blender/build_pauldrons.py -- --masks input/Masks \
-        --cams armor-forge/cams.json --mannequin armor-forge/mannequin.json \
-        --art "reference/Embermine Heavy Armor Turnaround.png" --trace-meta out/helmet/traced/trace.json \
-        --out out/pauldrons
+        --cams armor-forge/cams.json --art "reference/Embermine Heavy Armor Turnaround.png" \
+        --trace-meta out/helmet/traced/trace.json --mannequin armor-forge/mannequin.json --out out/pauldrons
 
-Piece colours default to the Embermine piece map (pauldrons 137,87,212; shoulder lames 220,157,242).
-Writes <out>/pauldrons.blend (collection "Pauldrons": "Pauldron cap L/R", "Pauldron lame 1 L/R";
-the mannequin in "Reference", hidden from render), renders and concept_vs_pauldrons.png.
+Each piece (by its colour in the piece map) is a four-sided plate fitted to the piece's outline in
+the front, back and side views and to its gold trim (armor_forge/plate.py), then built as flat panels
+split at the creases, a raised rim and (on the cap) a lip on the neck edge. Writes
+<out>/pauldrons.blend (collection "Pauldrons"; "Reference" holds the torso), renders,
+concept_vs_pauldrons.png (fitted edge loop in red and creases in blue on the concept) and
+pauldrons.json (fit scores and the plates).
 """
 import argparse
 import json
@@ -16,8 +18,9 @@ import sys
 
 import bpy
 import numpy as np
+import scipy.ndimage as ndi
 from mathutils import Vector
-from PIL import Image
+from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -25,7 +28,13 @@ sys.path.insert(0, os.path.dirname(HERE))
 import build_helmet as bh  # noqa: E402
 from armor_forge import concept as cc  # noqa: E402
 from armor_forge import helmet_parts as hp  # noqa: E402
-from armor_forge import pauldron as pd  # noqa: E402
+from armor_forge import plate as pl  # noqa: E402
+
+PIECES = [  # name, piece-map colour, layout
+    ("Pauldron cap", (137, 87, 212), dict(lip=0.012)),
+    ("Pauldron lame 1", (220, 157, 242), dict(creases_u=(), lip=0.0)),
+]
+COLOURS = {"panel": (0.33, 0.36, 0.40), "rim": (0.62, 0.48, 0.25), "lip": (0.62, 0.48, 0.25)}
 
 
 def args():
@@ -33,170 +42,168 @@ def args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--masks", required=True)
     ap.add_argument("--cams", required=True)
-    ap.add_argument("--mannequin", required=True)
-    ap.add_argument("--cap-rgb", default="137,87,212")
-    ap.add_argument("--lame-rgb", default="220,157,242")
-    ap.add_argument("--arm-rgb", default="146,99,76;2,191,166",
-                    help="arm pieces as drawn, sleeve first (';'-separated r,g,b)")
-    ap.add_argument("--art", default=None)
-    ap.add_argument("--trace-meta", default=None)
-    ap.add_argument("--param", nargs="*", default=[])
-    ap.add_argument("--subd", type=int, default=1)
+    ap.add_argument("--art", required=True)
+    ap.add_argument("--trace-meta", required=True, help="registrations (concept.trace_views output)")
+    ap.add_argument("--mannequin", default=None, help="mannequin.json, for a reference torso")
+    ap.add_argument("--thickness", type=float, default=0.004)
     ap.add_argument("--res", type=int, default=700)
     ap.add_argument("--out", required=True)
     return ap.parse_args(argv)
 
 
-def part(path, rgb):
+def colour_mask(path, rgb):
     a = np.asarray(Image.open(path).convert("RGBA"))
     return (a[..., 0] == rgb[0]) & (a[..., 1] == rgb[1]) & (a[..., 2] == rgb[2]) & (a[..., 3] > 128)
 
 
-def views(masks, rgb, cams):
-    f = {v: part(os.path.join(masks, f"{cc.MASK_FILES[v]}.png"), rgb) for v in ("front", "back", "side")}
-    return pd.Views(f["front"], f["back"], f["side"], cams)
+def gold_in_frame(art_rgb, reg, mask, pad=40):
+    """Trim pixels (gold) in the artboard frame, around the piece."""
+    r, c = np.nonzero(mask)
+    r0, r1 = max(0, r.min() - pad), min(mask.shape[0], r.max() + pad)
+    c0, c1 = max(0, c.min() - pad), min(mask.shape[1], c.max() + pad)
+    rr, cc_ = np.mgrid[r0:r1, c0:c1].astype(float)
+    ax, ay = reg.to_art(cc_ + .5, rr + .5)
+    g = ndi.map_coordinates(hp.gold_score(art_rgb), [ay - .5, ax - .5], order=1) > 0.5
+    out = np.zeros_like(mask)
+    out[r0:r1, c0:c1] = g
+    return out
 
 
-def mesh_object(name, verts, faces, colour, coll, subd=1, thickness=0.005):
+def make_object(name, mesh, coll, thickness):
     me = bpy.data.meshes.new(name)
-    me.from_pydata([tuple(v) for v in verts], [], faces)
+    me.from_pydata([tuple(v) for v in mesh.verts], [], mesh.faces)
     me.validate()
-    me.shade_smooth()
-    mat = bpy.data.materials.get(name.rsplit(" ", 1)[0]) or bpy.data.materials.new(name.rsplit(" ", 1)[0])
-    mat.diffuse_color = (*colour, 1)
-    me.materials.append(mat)
+    for key in ("panel", "rim", "lip"):
+        m = bpy.data.materials.get(f"Plate {key}") or bpy.data.materials.new(f"Plate {key}")
+        m.diffuse_color = (*COLOURS[key], 1)
+        me.materials.append(m)
+    idx = {"panel": 0, "rim": 1, "lip": 2}
+    for poly, g in zip(me.polygons, mesh.groups):
+        poly.material_index = idx[g]
+        poly.use_smooth = False
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.verts.ensure_lookup_table()
+    for a, b in mesh.sharp:
+        e = bm.edges.get((bm.verts[a], bm.verts[b]))
+        if e is not None:
+            e.smooth = False
+    bm.to_mesh(me)
+    bm.free()
     ob = bpy.data.objects.new(name, me)
     coll.objects.link(ob)
     if thickness:
         so = ob.modifiers.new("Solidify", "SOLIDIFY")
         so.thickness = thickness
         so.offset = -1
-    if subd:
-        sd = ob.modifiers.new("Subdivision", "SUBSURF")
-        sd.levels = sd.render_levels = subd
     return ob
 
 
-def arm_tube(axis, t0, t1, r, n=24, rows=8):
-    verts, faces = [], []
-    phis = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    for t in np.linspace(t0, t1, rows + 1):
-        verts.extend(axis.point(t) + r * axis.direction(phis))
-    for i in range(rows):
-        for j in range(n):
-            a_, b_ = i * n + j, i * n + (j + 1) % n
-            faces.append([a_, b_, b_ + n, a_ + n])
-    return np.array(verts), faces
+def load_torso(path):
+    d = json.load(open(path)).get("GunHound Fitting Body.001")
+    if d is None:
+        return None
+    V = np.array(d["verts"])
+    F = d["faces"]
+    if d.get("mirror"):
+        n = len(V)
+        V = np.vstack([V, V * [-1, 1, 1]])
+        F = F + [[i + n for i in reversed(f)] for f in F]
+    return V, F
 
 
-def outline_on_concept(art, reg, cam, view, meshes, centre_u, centre_z, size=400, half=0.25):
-    """Concept crop with the built pieces' outline in red."""
-    import scipy.ndimage as ndi
-    from PIL import ImageDraw
+def overlay(art, reg, cam, view, plates, centre_u, centre_z, size=500, half=0.2):
     ppm = reg.scale * 1600
     cx, cy = reg.to_art(cam[0] + centre_u * 1600, cam[1] - centre_z * 1600)
     h = half * ppm
-    crop = art.transform((size, size), Image.EXTENT, (cx - h, cy - h, cx + h, cy + h), Image.BICUBIC)
-    m = hp.project_mask(meshes, view, cam, (4096, 4096))
-    e = m & ~ndi.binary_erosion(m, iterations=2)
-    r, c = np.nonzero(e)
-    x, y = reg.to_art(c + 0.5, r + 0.5)
     k = size / (2 * h)
+    crop = art.transform((size, size), Image.EXTENT, (cx - h, cy - h, cx + h, cy + h), Image.BICUBIC)
     d = ImageDraw.Draw(crop)
-    for X, Y in zip((x - cx + h) * k, (y - cy + h) * k):
-        d.point((X, Y), fill=(230, 20, 20))
+
+    def P(Q):
+        u, z = pl.project(Q, view)
+        x, y = reg.to_art(cam[0] + u * 1600, cam[1] - z * 1600)
+        return [((a - cx + h) * k, (b - cy + h) * k) for a, b in zip(x, y)]
+    for plate, layout in plates:
+        Sm = plate.surface(np.linspace(0, 1, 41), np.linspace(0, 1, 41))
+        for u in layout.creases_u:
+            d.line(P(Sm[int(round(u * 40)), :]), fill=(30, 110, 255), width=2)
+        for v in layout.creases_v:
+            d.line(P(Sm[:, int(round(v * 40))]), fill=(30, 110, 255), width=2)
+        loop = pl._loop(Sm)
+        d.line(P(np.vstack([loop, loop[:1]])), fill=(230, 20, 20), width=2)
     return crop
 
 
 def main():
     a = args()
     cams = json.load(open(a.cams))
-    rgb = lambda s: tuple(int(v) for v in s.split(","))  # noqa: E731
-    vc, vl = views(a.masks, rgb(a.cap_rgb), cams), views(a.masks, rgb(a.lame_rgb), cams)
-    body = pd.load_mannequin(a.mannequin)
-    # the arm as drawn: sleeves + vambraces (+ the pauldron pieces) give the axis, the sleeve the radius
-    arm_rgbs = [rgb(s) for s in a.arm_rgb.split(";")]
-    fa = np.zeros_like(vc.front)
-    sa = np.zeros_like(vc.side)
-    for c in arm_rgbs:
-        fa |= part(os.path.join(a.masks, "Front.png"), c)
-        sa |= part(os.path.join(a.masks, "Side.png"), c)
-    axis = pd.axis_from_views(fa, sa, cams)
-    r_arm = pd.arm_radius(part(os.path.join(a.masks, "Front.png"), arm_rgbs[0]), cams, axis)
-    print(f"armor-forge: arm radius {r_arm:.3f} (from the drawn sleeve)")
-    p = pd.PauldronParams()
-    for kv in a.param:
-        k, v = kv.split("=")
-        setattr(p, k, type(getattr(p, k))(v))
-    P = pd.build(vc, vl, r_arm, axis, p)
-    print("armor-forge: arm axis", np.round(axis.origin, 3).tolist(), "dir", np.round(axis.d, 3).tolist())
-    for name, v, f in P.pieces:
-        print(f"armor-forge: {name}: {len(v)} verts, {len(f)} faces")
-    # silhouette check (left side only)
-    left = [(v, f) for _, v, f in P.pieces]
-    iou = {}
-    for view, m in (("front", vc.front | vl.front), ("back", vc.back | vl.back), ("side", vc.side | vl.side)):
-        c0 = cams[view][0]
-        side_mask = np.zeros_like(m)
-        if view == "front":
-            side_mask[:, int(c0):] = True
-        elif view == "back":
-            side_mask[:, :int(c0)] = True
+    meta = json.load(open(a.trace_meta))
+    regs = {v: cc.Registration(**meta[v]["registration"]) for v in ("front", "back", "side")}
+    art_rgb = cc.load_rgb(a.art)
+    built, report = [], {}
+    prev_masks = None
+    for name, rgb, lay in PIECES:
+        full = {v: colour_mask(os.path.join(a.masks, f"{cc.MASK_FILES[v]}.png"), rgb) for v in ("front", "back", "side")}
+        if not full["front"].any():
+            continue
+        above = prev_masks if built else None          # the pieces above may cover this one
+        views = [pl.make_view(v, full[v], cams[v], gold_in_frame(art_rgb, regs[v], full[v]),
+                              in_front=None if above is None else above[v]) for v in full]
+        prev_masks = full if not built else {v: prev_masks[v] | full[v] for v in full}
+        if built:      # a lame: start from the piece above, continued down the arm
+            init = pl.continue_from(built[-1][1])
         else:
-            side_mask[:] = True
-        mm = m & side_mask
-        b = hp.project_mask(left, view, cams[view], m.shape)
-        iou[view] = float((b & mm).sum() / max((b | mm).sum(), 1))
-    print("armor-forge: silhouette IoU (left)", {k: round(v, 3) for k, v in iou.items()})
+            init = pl.init_from_views(full["front"], full["back"], full["side"], cams)
+        plate = pl.fit(views, init)
+        _, detail = pl.score(plate, views, detail=True)
+        layout = pl.PanelLayout(**lay)
+        mesh = pl.build_mesh(plate, layout)
+        print(f"armor-forge: {name}: " + ", ".join(f"{v} IoU {d['iou']:.3f} trim {d['trim_mm']:.1f} mm"
+                                                     for v, d in detail.items() if isinstance(d, dict))
+              + f"; {len(mesh.verts)} verts, {len(mesh.faces)} faces")
+        built.append((name, plate, layout, mesh))
+        report[name] = dict(scores=detail, plate=plate.vector().reshape(8, 3).tolist())
 
     for ob in list(bpy.data.objects):
         bpy.data.objects.remove(ob)
     sc = bpy.context.scene
-    ref = bpy.data.collections.new("Reference")
-    sc.collection.children.link(ref)
-    try:
-        V, T = pd.load_mannequin(a.mannequin, "GunHound Fitting Body.001")   # torso without arms
-    except KeyError:
-        V, T = body
-    mesh_object("Mannequin", V, T.tolist(), (0.75, 0.72, 0.68), ref, subd=0, thickness=0)
-    # the arm as drawn (the concept's arm need not match the mannequin's pose)
-    J = np.array(P.info["joint"])
-    tj, _, _ = axis.to_local(J)
-    tv, tf = arm_tube(axis, tj, tj + 0.55, r_arm)
-    mesh_object("Arm (as drawn)", tv, tf, (0.62, 0.50, 0.42), ref, subd=0, thickness=0)
+    if a.mannequin:
+        torso = load_torso(a.mannequin)
+        if torso is not None:
+            ref = bpy.data.collections.new("Reference")
+            sc.collection.children.link(ref)
+            me = bpy.data.meshes.new("Torso")
+            me.from_pydata([tuple(v) for v in torso[0]], [], torso[1])
+            mt = bpy.data.materials.new("Torso")
+            mt.diffuse_color = (0.75, 0.72, 0.68, 1)
+            me.materials.append(mt)
+            ob = bpy.data.objects.new("Torso", me)
+            ref.objects.link(ob)
     coll = bpy.data.collections.new("Pauldrons")
     sc.collection.children.link(coll)
-    colours = {"Pauldron cap": (0.33, 0.36, 0.40), "Pauldron lame 1": (0.52, 0.47, 0.40)}
-    for name, v, f in P.pieces:
-        mesh_object(f"{name} L", v, f, colours[name], coll, a.subd)
-        mv, mf = pd.mirror(v, f)
-        mesh_object(f"{name} R", mv, mf, colours[name], coll, a.subd)
+    for name, plate, layout, mesh in built:
+        make_object(f"{name} L", mesh, coll, a.thickness)
+        make_object(f"{name} R", pl.mirror(mesh), coll, a.thickness)
     os.makedirs(a.out, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(os.path.join(a.out, "pauldrons.blend")))
-    json.dump(dict(iou=iou, axis=dict(origin=axis.origin.tolist(), d=axis.d.tolist()), info=P.info),
-              open(os.path.join(a.out, "pauldrons.json"), "w"), indent=1)
+    json.dump(report, open(os.path.join(a.out, "pauldrons.json"), "w"), indent=1)
 
     cam = bh.setup_render(a.res)
-    cam.data.ortho_scale = 0.5
-    centre = Vector((0.30, 0.03, 1.55))
-    shots = {"front": centre, "back": Vector((0.30, 0.03, 1.55)), "side": Vector((0.30, 0.03, 1.55)),
-             "three_quarter": centre}
-    for name, c in shots.items():
-        bh.render_view(cam, name, os.path.join(a.out, f"pauldron_{name}.png"), centre=c)
-    if a.art and a.trace_meta:
-        meta = json.load(open(a.trace_meta))
-        art = Image.open(a.art).convert("RGB")
-        T_ = 400
-        W = Image.new("RGB", (T_ * 4, T_ * 2), "white")
-        meshes = [(v, f) for _, v, f in P.pieces]
-        for i, v in enumerate(("front", "side", "back")):
-            reg = cc.Registration(**meta[v]["registration"])
-            u = {"front": 0.30, "back": -0.30, "side": 0.03}[v]
-            W.paste(outline_on_concept(art, reg, cams[v], v, meshes, u, 1.55, T_), (i * T_, 0))
-        for i, v in enumerate(("front", "side", "back", "three_quarter")):
-            W.paste(Image.open(os.path.join(a.out, f"pauldron_{v}.png")).convert("RGB").resize((T_, T_)),
-                    (i * T_, T_))
-        W.save(os.path.join(a.out, "concept_vs_pauldrons.png"))
+    cam.data.ortho_scale = 0.45
+    centre = Vector((0.28, 0.03, 1.64))
+    for view in ("front", "side", "back", "three_quarter"):
+        bh.render_view(cam, view, os.path.join(a.out, f"pauldron_{view}.png"), centre=centre)
+    art = Image.open(a.art).convert("RGB")
+    T = 450
+    W = Image.new("RGB", (T * 4, T * 2), "white")
+    plates = [(p_, l_) for _, p_, l_, _ in built]
+    for i, (v, u) in enumerate((("front", 0.28), ("side", 0.03), ("back", -0.28))):
+        W.paste(overlay(art, regs[v], cams[v], v, plates, u, 1.64, T), (i * T, 0))
+    for i, v in enumerate(("front", "side", "back", "three_quarter")):
+        W.paste(Image.open(os.path.join(a.out, f"pauldron_{v}.png")).convert("RGB").resize((T, T)), (i * T, T))
+    W.save(os.path.join(a.out, "concept_vs_pauldrons.png"))
     print("armor-forge: wrote", a.out)
 
 
