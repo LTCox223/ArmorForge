@@ -7,6 +7,49 @@ reconstructing 3D from a picture, we take the picture's *outline* of each armor 
 body surface underneath it, lift that surface off the skin, and give it thickness. The result
 already shares the body's skin weights and rig. You then refine it by hand.
 
+## Running it yourself (helmet pipeline)
+
+Everything runs from a terminal, from the repository root, with Blender 5.1 (the .blend files are
+5.1). No GUI step: the scripts read their settings from the command line.
+
+**One-time setup.** Blender ships its own Python with numpy; the scripts also need scipy and
+Pillow inside it. Find Blender's Python, then install into it:
+
+    blender -b --python-expr "import sys; print(sys.executable)"
+    "<that python>" -m ensurepip
+    "<that python>" -m pip install scipy pillow
+
+(`blender` is `blender.exe` in `C:\Program Files\Blender Foundation\Blender 5.1\` on Windows,
+`/Applications/Blender.app/Contents/MacOS/Blender` on macOS.) The `tools/*.py` scripts don't need
+Blender; run them with that same Python (or any Python with `pip install -r armor-forge/requirements.txt`).
+
+**Embermine (has piece masks and a side view):** visor + skull.
+
+    "<that python>" armor-forge/tools/trace_concept.py --art "reference/Embermine Heavy Armor Turnaround.png" \
+        --masks input/Masks --cams armor-forge/cams.json --out out/helmet/traced
+    blender -b -P armor-forge/blender/build_helmet_parts.py -- --masks out/helmet/traced \
+        --cams armor-forge/cams.json --art "reference/Embermine Heavy Armor Turnaround.png" \
+        --trace-meta out/helmet/traced/trace.json --out out/helmet_parts
+
+Open `out/helmet_parts/helmet_parts.blend` (objects "Helmet visor" and "Helmet skull"); `lines.png`
+shows the visor edges it found on the concept, `lines.json` the overlap scores.
+
+**Thornwood (front and back only, no masks):** one-piece helmet, depth guessed.
+
+    "<that python>" armor-forge/tools/helmet_from_sheet.py --art "blender/Thornwood knight armor turnaround.png" \
+        --front 10,880 --back 890,1760 --out out/thornwood/masks
+    blender -b -P armor-forge/blender/build_helmet.py -- --masks out/thornwood/masks \
+        --cams out/thornwood/masks/cams.json --out out/thornwood/helmet
+
+`--front`/`--back` are the pixel column ranges of the two panels in the sheet image; check
+`out/thornwood/masks/cut.png` to see the outline it cut out. Open `out/thornwood/helmet/helmet.blend`.
+
+**Tweaking.** `--param name=value` changes the shape settings (`HelmetParams` in
+`armor_forge/helmet.py`; for the parts builder they apply to the skull, `--visor` to the visor),
+e.g. `--param n_back=3.0 --visor bulge=0.004`. `--subd 0` turns off the subdivision preview.
+
+**Tests:** `"<that python>" -m pip install pytest`, then `cd armor-forge` and `"<that python>" -m pytest -q`.
+
 ## Body-shell set from a piece map (current approach, step 1)
 
 The AI makes the art; the scripts make the pieces. Input is a flat-colour piece map (four views,
