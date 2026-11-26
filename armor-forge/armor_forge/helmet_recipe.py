@@ -150,19 +150,64 @@ def seam_from_front(front_lines):
     return hm.Seam(brow, float(x0 + t * (z0 - zm)))
 
 
+def untwist_lines(lines: hp.VisorLines, turn):
+    """The visor's side-view edges, corrected for a side view drawn turned by `turn` (radians, as
+    plate.project: u = y cos - x sin about the helmet's centre line x = 0). The rear edge's gold is
+    on the near (+x) corner at x = w(z), so its true depth is y = (u + w sin) / cos; the top edge
+    runs from the ridge (x = 0) to that corner."""
+    if not turn:
+        return lines
+    c, s_ = np.cos(turn), np.sin(turn)
+    zs = np.array([lines.rear[2] - 0.05, lines.rear[2] + 0.05])
+    yr = (lines.y_rear(zs) + lines.w(zs) * s_) / c
+    t = (yr[1] - yr[0]) / (zs[1] - zs[0])
+    rear = (float(yr[0] + t * (lines.rear[2] - zs[0])), float(t), lines.rear[2])
+    z0, k, yref = lines.top_side
+    u_r = float(lines.y_rear(z0))                       # the drawn top edge ends at the rear edge
+    z_r = z0 + k * (u_r - yref)
+    y_f = yref / c
+    y_r = (u_r + float(lines.w(z_r)) * s_) / c
+    k2 = (z_r - z0) / (y_r - y_f) if abs(y_r - y_f) > 1e-6 else k
+    return hp.VisorLines(rear, (z0, float(k2), float(y_f)), lines.sides, lines.top_front)
+
+
+def turned_side_mask(meshes, cam, shape, turn, s=1600.0):
+    """Side-view silhouette of the meshes as drawn turned by `turn` about x = 0."""
+    from PIL import Image, ImageDraw
+    img = Image.new("L", (shape[1], shape[0]), 0)
+    d = ImageDraw.Draw(img)
+    for verts, faces in meshes:
+        u = verts[:, 1] * np.cos(turn) - verts[:, 0] * np.sin(turn)
+        cols, rows = cam[0] + u * s, cam[1] - verts[:, 2] * s
+        for f in faces:
+            d.polygon([(cols[i], rows[i]) for i in f], fill=255)
+    return np.asarray(img) > 0
+
+
+def _scale_depth(o: hm.Outlines, scale, yc):
+    sd = o.side
+    return hm.Outlines(o.width, hm.Profile(sd.z, yc + scale * (sd.lo - yc), yc + scale * (sd.hi - yc)),
+                       o.bottom_front, o.bottom_back, o.bottom_side)
+
+
 def build(front_sil, back_sil, side_sil, cams, fp=FaceParams(), p=None, art_rgb=None, regs=None,
-          side_is_real=True, s=1600.0):
+          side_is_real=True, s=1600.0, side_turn=0.0):
     """The recipe. With art + registrations the seam (and, with a real side view, the face's wedge)
-    comes from the concept's gold trim; without, defaults."""
+    comes from the concept's gold trim; without, defaults. side_turn: the side view drawn turned
+    by this angle (radians, sheet.json): the visor's side-view edges are corrected for it, and the
+    depth is scaled so the helmet, seen turned, matches the drawn side outline."""
     p = p or hm.HelmetParams()
     beak_fn = None
     lines = None
+    lines_drawn = None
     front_lines = None
+    side_full = side_sil
     if art_rgb is not None and regs is not None:
         front = hp.view_data("front", art_rgb, regs["front"], cams["front"], front_sil)
         if side_is_real:
             side = hp.view_data("side", art_rgb, regs["side"], cams["side"], side_sil)
-            lines = hp.detect_visor(front, side)
+            lines_drawn = hp.detect_visor(front, side)
+            lines = untwist_lines(lines_drawn, side_turn)
             front_lines = (lines.sides, lines.top_front)
             beak_fn = hp.skull_beak(lines, gap=0.0)
         else:
@@ -180,9 +225,33 @@ def build(front_sil, back_sil, side_sil, cams, fp=FaceParams(), p=None, art_rgb=
             p = hm.HelmetParams(**{**vars(p), "brow": zc})
     else:
         seam = default_seam(o, p, fp)
-    verts, faces, info = hm.build(o, p, beak_fn=beak_fn, seam=seam, hem_fn=skull_hem(seam, rim_z))
+
+    def make(outl):
+        verts, faces, info = hm.build(outl, p, beak_fn=beak_fn, seam=seam, hem_fn=skull_hem(seam, rim_z))
+        return verts, faces, info
+
+    verts, faces, info = make(o)
+    depth_scale = 1.0
+    if side_is_real and side_turn:
+        # the drawn side outline of a turned helmet is deeper than the helmet: find the depth scale
+        # whose turned projection matches it best
+        yc = float(np.median(0.5 * (o.side.lo + o.side.hi)))
+        target = side_sil
+        best = (-1.0, 1.0)
+        for sc in np.arange(0.86, 1.041, 0.01):
+            v = verts.copy()
+            v[:, 1] = yc + sc * (v[:, 1] - yc)
+            m = turned_side_mask([(v, faces)], cams["side"], target.shape, side_turn, s)
+            iou = (m & target).sum() / max((m | target).sum(), 1)
+            if iou > best[0]:
+                best = (iou, float(sc))
+        depth_scale = best[1]
+        if abs(depth_scale - 1.0) > 1e-6:
+            o = _scale_depth(o, depth_scale, yc)
+            verts, faces, info = make(o)
     helmet = split(verts, faces, info, fp)
-    helmet.info.update(lines=lines, front_lines=front_lines, seam_def=seam, outlines=o)
+    helmet.info.update(lines=lines, lines_drawn=lines_drawn, front_lines=front_lines, seam_def=seam,
+                       outlines=o, side_turn=side_turn, depth_scale=depth_scale, side_mask=side_sil)
     return helmet
 
 

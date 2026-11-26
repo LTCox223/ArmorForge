@@ -16,6 +16,7 @@ import os
 import sys
 
 import bpy
+import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -39,6 +40,8 @@ def args():
     ap.add_argument("--subd", type=int, default=1)
     ap.add_argument("--res", type=int, default=700)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--side-turn", type=float, default=None,
+                    help="side view's drawn turn (deg); default: sheet.json next to --trace-meta, else 0")
     return ap.parse_args(argv)
 
 
@@ -76,7 +79,20 @@ def main():
         art = cc.load_rgb(a.art)
     fp = set_params(hr.FaceParams(mode=a.face_mode), a.face)
     p = set_params(hm.HelmetParams(), a.param)
-    helmet = hr.build(masks["front"], masks["back"], masks["side"], cams, fp, p, art, regs, side_real)
+    turn = 0.0
+    if a.side_turn is not None:
+        turn = np.radians(a.side_turn)
+    elif a.trace_meta:
+        sp = os.path.join(os.path.dirname(os.path.abspath(a.trace_meta)), "sheet.json")
+        if os.path.exists(sp):
+            turn = np.radians(json.load(open(sp)).get("side_turn_deg", 0.0))
+    helmet = hr.build(masks["front"], masks["back"], masks["side"], cams, fp, p, art, regs, side_real,
+                      side_turn=turn)
+    L, L0 = helmet.info["lines"], helmet.info["lines_drawn"]
+    if L is not None:
+        zm = L.rear[2]
+        print(f"armor-forge: side view turn {np.degrees(turn):+.1f} deg; depth scale {helmet.info['depth_scale']:.2f}; "
+              f"visor rear edge y {float(L0.y_rear(zm)):+.3f} as drawn -> {float(L.y_rear(zm)):+.3f}")
     info = helmet.info
     seam = info["seam_def"]
     print(f"armor-forge: seam brow z={float(seam.brow_fn(0)):.3f} at the centre, "
@@ -88,6 +104,11 @@ def main():
     if side_real:
         view_masks["side"] = masks["side"]
     iou = hr.silhouette_iou(helmet, view_masks, cams)
+    if side_real and turn:
+        m = hr.turned_side_mask([(helmet.skull.verts, helmet.skull.faces), (helmet.face.verts, helmet.face.faces)],
+                                cams["side"], masks["side"].shape, turn)
+        t = helmet.info["side_mask"]
+        iou["side (seen turned)"] = float((m & t).sum() / max((m | t).sum(), 1))
     print("armor-forge: silhouette IoU", {k: round(v, 3) for k, v in iou.items()})
 
     for ob in list(bpy.data.objects):

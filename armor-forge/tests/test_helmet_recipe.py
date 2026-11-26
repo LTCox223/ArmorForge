@@ -71,3 +71,15 @@ def test_embermine_recipe_defaults_without_art():
     assert h.info["front_lines"] is None                 # no art: default seam
     iou = hr.silhouette_iou(h, m, cams)
     assert min(iou.values()) > 0.8
+
+
+def test_untwist_moves_the_rear_edge_by_the_turn():
+    from armor_forge import helmet_parts as hp
+    L = hp.VisorLines(rear=(-0.05, 0.0, 1.85), top_side=(1.93, 0.2, -0.19), sides=(0.10, 0.0, 1.85),
+                      top_front=(1.92, 0.3))
+    t = np.radians(-4.2)
+    U = hr.untwist_lines(L, t)
+    # drawn u = y cos - x sin at the near corner x = w: y = (u + w sin) / cos
+    assert np.isclose(U.y_rear(1.85), (-0.05 + 0.10 * np.sin(t)) / np.cos(t))
+    assert U.y_rear(1.85) < L.y_rear(1.85)               # the true rear edge is further forward
+    assert hr.untwist_lines(L, 0.0) is L

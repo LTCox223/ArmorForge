@@ -79,3 +79,14 @@ def test_continue_from_starts_under_the_piece_above():
     q = pl.continue_from(p)
     assert np.allclose(q.c00, p.surface([0.85], [0.0])[0, 0])
     assert q.c10[2] < p.c10[2]                            # continues past the arm edge, downward
+
+
+def test_symmetric_roundtrip_and_turned_projection():
+    p = saddle()
+    q = pl.Plate.from_symmetric(p.symmetric_vector())
+    plane = 0.25 * (p.c00[1] + p.c01[1] + p.c10[1] + p.c11[1])
+    assert np.allclose(q.c01[1], 2 * plane - q.c00[1]) and np.allclose(q.c01[[0, 2]], q.c00[[0, 2]])
+    assert np.isclose(q.m_u0[1], plane)
+    P = np.array([[0.1, 0.0, 1.0], [0.0, 0.1, 1.0]])
+    u, z = pl.project(P, "side", np.radians(-10), np.zeros(3))
+    assert u[0] > 0 and np.isclose(u[1], 0.1 * np.cos(np.radians(10)))   # near-side points drift back

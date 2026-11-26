@@ -48,6 +48,10 @@ def args():
     ap.add_argument("--thickness", type=float, default=0.004)
     ap.add_argument("--res", type=int, default=700)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--side-turn", type=float, default=None,
+                    help="side view's drawn turn (deg); default: sheet.json next to --trace-meta, else measured")
+    ap.add_argument("--measure-turn", action="store_true", help="measure the turn on the cap and save it")
+    ap.add_argument("--asymmetric", action="store_true", help="don't force front/back symmetry")
     return ap.parse_args(argv)
 
 
@@ -113,7 +117,7 @@ def load_torso(path):
     return V, F
 
 
-def overlay(art, reg, cam, view, plates, centre_u, centre_z, size=500, half=0.2):
+def overlay(art, reg, cam, view, plates, centre_u, centre_z, size=500, half=0.2, turn=0.0):
     ppm = reg.scale * 1600
     cx, cy = reg.to_art(cam[0] + centre_u * 1600, cam[1] - centre_z * 1600)
     h = half * ppm
@@ -122,10 +126,12 @@ def overlay(art, reg, cam, view, plates, centre_u, centre_z, size=500, half=0.2)
     d = ImageDraw.Draw(crop)
 
     def P(Q):
-        u, z = pl.project(Q, view)
+        u, z = pl.project(Q, view, turn, centre[0])
         x, y = reg.to_art(cam[0] + u * 1600, cam[1] - z * 1600)
         return [((a - cx + h) * k, (b - cy + h) * k) for a, b in zip(x, y)]
+    centre = [None]
     for plate, layout in plates:
+        centre[0] = plate.centre()
         Sm = plate.surface(np.linspace(0, 1, 41), np.linspace(0, 1, 41))
         for u in layout.creases_u:
             d.line(P(Sm[int(round(u * 40)), :]), fill=(30, 110, 255), width=2)
@@ -142,6 +148,14 @@ def main():
     meta = json.load(open(a.trace_meta))
     regs = {v: cc.Registration(**meta[v]["registration"]) for v in ("front", "back", "side")}
     art_rgb = cc.load_rgb(a.art)
+    sheet_path = os.path.join(os.path.dirname(os.path.abspath(a.trace_meta)), "sheet.json")
+    sheet = json.load(open(sheet_path)) if os.path.exists(sheet_path) else {}
+    if a.side_turn is not None:
+        turn, turn_source = np.radians(a.side_turn), "given"
+    elif "side_turn_deg" in sheet and not a.measure_turn:
+        turn, turn_source = np.radians(sheet["side_turn_deg"]), "sheet.json"
+    else:
+        turn, turn_source = 0.0, "measure"
     built, report = [], {}
     prev_masks = None
     for name, rgb, lay in PIECES:
@@ -156,7 +170,14 @@ def main():
             init = pl.continue_from(built[-1][1])
         else:
             init = pl.init_from_views(full["front"], full["back"], full["side"], cams)
-        plate = pl.fit(views, init)
+        for vw in views:
+            if vw.name == "side":
+                vw.turn = turn
+        measure = not built and turn_source == "measure"
+        plate, t_fit = pl.fit(views, init, symmetric=not a.asymmetric, fit_turn=measure)
+        if measure:
+            turn = t_fit
+            print(f"armor-forge: side view drawn turned {np.degrees(turn):+.1f} deg (measured on the {name.lower()})")
         _, detail = pl.score(plate, views, detail=True)
         layout = pl.PanelLayout(**lay)
         mesh = pl.build_mesh(plate, layout)
@@ -188,7 +209,14 @@ def main():
         make_object(f"{name} R", pl.mirror(mesh), coll, a.thickness)
     os.makedirs(a.out, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(os.path.join(a.out, "pauldrons.blend")))
+    report["side_turn_deg"] = float(np.degrees(turn))
+    report["side_turn_source"] = turn_source
     json.dump(report, open(os.path.join(a.out, "pauldrons.json"), "w"), indent=1)
+    if turn_source == "measure":
+        sheet["side_turn_deg"] = float(np.degrees(turn))
+        sheet["side_turn_note"] = "measured on the pauldron cap (build_pauldrons.py)"
+        json.dump(sheet, open(sheet_path, "w"), indent=1)
+        print("armor-forge: saved the side view's turn to", sheet_path)
 
     cam = bh.setup_render(a.res)
     cam.data.ortho_scale = 0.45
@@ -200,7 +228,7 @@ def main():
     W = Image.new("RGB", (T * 4, T * 2), "white")
     plates = [(p_, l_) for _, p_, l_, _ in built]
     for i, (v, u) in enumerate((("front", 0.28), ("side", 0.03), ("back", -0.28))):
-        W.paste(overlay(art, regs[v], cams[v], v, plates, u, 1.64, T), (i * T, 0))
+        W.paste(overlay(art, regs[v], cams[v], v, plates, u, 1.64, T, turn=turn), (i * T, 0))
     for i, v in enumerate(("front", "side", "back", "three_quarter")):
         W.paste(Image.open(os.path.join(a.out, f"pauldron_{v}.png")).convert("RGB").resize((T, T)), (i * T, T))
     W.save(os.path.join(a.out, "concept_vs_pauldrons.png"))

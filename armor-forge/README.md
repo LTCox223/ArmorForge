@@ -189,9 +189,22 @@ edge, Solidify for thickness; built for the left and mirrored.
 
 Output: `pauldrons.blend` (collection "Pauldrons": cap and lame 1, L and R, materials panel / rim /
 lip), renders, `concept_vs_pauldrons.png` (fitted edge loop red, creases blue, on the concept),
-`pauldrons.json`. Embermine: cap IoU 0.84 / 0.91 / 0.91 (front / back / side), edge within 6-9 mm of
-the trim; lame 0.83 / 0.84 / 0.97. Crease positions are fixed defaults for now (`PanelLayout`).
+`pauldrons.json`. Embermine (symmetric, side view turned -4.2 deg): cap IoU 0.81 / 0.89 / 0.91 (front / back /
+side), edge within 9-11 mm of the trim; lame 0.87 / 0.78 / 0.90. Crease positions are fixed defaults for now (`PanelLayout`).
 Takes about two minutes (the fit).
+
+**Artistic depth (the side view is drawn slightly turned).** Concept artists turn pieces a little
+toward the viewer in the side view to show depth, so its interior lines and trim show faces a true
+side view would hide. Taken literally, that bends plates (the pauldron's front edge curled back). So:
+
+* plates are fitted mirror-symmetric where the armor is (pauldrons front/back; helmet and chest are
+  symmetric left/right by construction), and the side view is used for outline and depth;
+* the side view's turn is measured once per sheet (on the pauldron cap: Embermine -4.2 deg) and saved
+  to `sheet.json` next to `trace.json`; every builder reads it (`--side-turn` overrides,
+  `build_pauldrons.py --measure-turn` re-measures);
+* the helmet corrects the visor's side-view edges for it (Embermine: rear edge 8 mm forward, visor
+  13.6 cm deep instead of 14.4) and checks its depth by projecting itself turned against the drawn
+  side outline (depth scale 1.00; IoU seen turned 0.94 vs 0.92 straight). `out/helmet_recipe/turn_compare.png`.
 
 **Pick the curvature by eye** (`blender/helmet_variants.py`). The outlines don't decide how round or
 boxy the helmet is between the views; this renders a 3 x 3 grid over any two `HelmetParams`, each cell

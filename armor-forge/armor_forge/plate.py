@@ -36,14 +36,21 @@ class PlateView:
     ds: int
     gold: np.ndarray        # (N, 2) trim points in (u, z) metres, u as in project()
     hidden_ok: np.ndarray = None   # bool, downsampled: pieces in front of this one (covering them is free)
+    turn: float = 0.0              # side view only: drawn turned by this angle (radians), see project()
 
     @property
     def ppm(self):
         return S / self.ds
 
 
-def project(P, view):
-    """u (across the view) and z of points: front u = x, back u = -x, side u = y."""
+def project(P, view, turn=0.0, centre=None):
+    """u (across the view) and z of points: front u = x, back u = -x, side u = y.
+    turn: the side view drawn turned by this angle (radians) about a vertical axis through `centre`
+    (artists turn pieces a little toward the viewer to show depth); u = y cos - x sin about it."""
+    if view == "side" and turn:
+        c = np.zeros(3) if centre is None else centre
+        u = (P[..., 1] - c[1]) * np.cos(turn) - (P[..., 0] - c[0]) * np.sin(turn) + c[1]
+        return u, P[..., 2]
     u = {"front": P[..., 0], "back": -P[..., 0], "side": P[..., 1]}[view]
     return u, P[..., 2]
 
@@ -101,6 +108,34 @@ class Plate:
     def from_vector(x):
         return Plate(*np.asarray(x, float).reshape(8, 3))
 
+    def centre(self):
+        return 0.25 * (self.c00 + self.c10 + self.c01 + self.c11)
+
+    def symmetric_vector(self, axis=1):
+        """Parameters of the plate made mirror-symmetric (v0 <-> v1) about a plane normal to `axis`
+        (1: front/back, y = const): c00, c10, the u-edge middles without that axis, m_v0, plane."""
+        k = [i for i in range(3) if i != axis]
+        plane = 0.25 * (self.c00[axis] + self.c01[axis] + self.c10[axis] + self.c11[axis])
+        return np.concatenate([self.c00, self.c10, self.m_u0[k], self.m_u1[k], self.m_v0, [plane]])
+
+    @staticmethod
+    def from_symmetric(x, axis=1):
+        x = np.asarray(x, float)
+        c00, c10, mv0, plane = x[0:3], x[3:6], x[10:13], x[13]
+        k = [i for i in range(3) if i != axis]
+
+        def mir(p):
+            q = p.copy()
+            q[axis] = 2 * plane - p[axis]
+            return q
+
+        def mid(xy):
+            q = np.zeros(3)
+            q[k] = xy
+            q[axis] = plane
+            return q
+        return Plate(c00, c10, mir(c00), mir(c10), mid(x[6:8]), mid(x[8:10]), mv0, mir(mv0))
+
     def surface(self, u, v):
         """Coons patch at the grid u x v -> (len(u), len(v), 3)."""
         u, v = np.asarray(u, float), np.asarray(v, float)
@@ -118,10 +153,10 @@ def _loop(Sm):
     return np.concatenate([Sm[0, :], Sm[1:, -1], Sm[-1, -2::-1], Sm[-2:0:-1, 0]])
 
 
-def _raster(Sm, view: PlateView):
+def _raster(Sm, view: PlateView, centre=None):
     img = Image.new("L", (view.mask.shape[1], view.mask.shape[0]), 0)
     d = ImageDraw.Draw(img)
-    u, z = project(Sm, view.name)
+    u, z = project(Sm, view.name, view.turn, centre)
     cx, cy = view.c0 + u * view.ppm, view.r0 - z * view.ppm
     for i in range(Sm.shape[0] - 1):
         for j in range(Sm.shape[1] - 1):
@@ -148,16 +183,17 @@ class FitWeights:
 def score(plate: Plate, views, w=FitWeights(), detail=False):
     Sm = plate.surface(np.linspace(0, 1, 9), np.linspace(0, 1, 13))
     loop = _loop(Sm)
+    centre = plate.centre()
     tot, out = 0.0, {}
     for vw in views:
-        b = _raster(Sm, vw)
+        b = _raster(Sm, vw, centre)
         extra = b & ~vw.mask
         if vw.hidden_ok is not None:
             extra &= ~vw.hidden_ok
         iou = (b & vw.mask).sum() / max(vw.mask.sum() + extra.sum(), 1)
         trim = 0.0
         if len(vw.gold):
-            u, z = project(loop, vw.name)
+            u, z = project(loop, vw.name, vw.turn, centre)
             poly = np.stack([u, z], 1)
             trim = float(np.minimum(_seg_dist(vw.gold, poly[:-1], poly[1:]), w.trim_cap).mean())
         tot += (1 - iou) + w.trim * trim
@@ -175,11 +211,36 @@ def score(plate: Plate, views, w=FitWeights(), detail=False):
     return (tot, out) if detail else tot
 
 
-def fit(views, init: Plate, w=FitWeights(), maxiter=4000):
+def fit(views, init: Plate, w=FitWeights(), maxiter=6000, symmetric=True, sym_axis=1, fit_turn=False,
+        turn_max=np.radians(25)):
+    """Fit the plate. symmetric: mirror-symmetric about a plane normal to sym_axis (pauldron front /
+    back: 1), which also keeps the side view's drawing cheats from bending it. fit_turn: also fit the
+    side view's turn (the views' `turn` is the start). -> (plate, turn)."""
     from scipy.optimize import minimize
-    res = minimize(lambda x: score(Plate.from_vector(x), views, w), init.vector(), method="Powell",
-                   options=dict(maxiter=maxiter, xtol=1e-4, ftol=1e-5))
-    return Plate.from_vector(res.x)
+    side = [vw for vw in views if vw.name == "side"]
+    turn0 = side[0].turn if side else 0.0
+    if symmetric:
+        x0 = init.symmetric_vector(sym_axis)
+        make = lambda x: Plate.from_symmetric(x, sym_axis)  # noqa: E731
+    else:
+        x0 = init.vector()
+        make = Plate.from_vector
+    if fit_turn and side:
+        x0 = np.concatenate([x0, [turn0]])
+
+    def f(x):
+        if fit_turn and side:
+            for vw in side:
+                vw.turn = x[-1]
+            return score(make(x[:-1]), views, w) + 5.0 * max(0.0, abs(x[-1]) - turn_max)
+        return score(make(x), views, w)
+    res = minimize(f, x0, method="Powell", options=dict(maxiter=maxiter, xtol=1e-4, ftol=1e-5))
+    if fit_turn and side:
+        turn = float(res.x[-1])
+        for vw in side:
+            vw.turn = turn
+        return make(res.x[:-1]), turn
+    return make(res.x), turn0
 
 
 def init_from_views(front_mask, back_mask, side_mask, cams, side=+1):
