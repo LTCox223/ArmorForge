@@ -280,9 +280,19 @@ def slicer(P, p: HelmetParams, K=None, beak_fn=None):
     return slice_at
 
 
-def build(o: Outlines, p: HelmetParams = HelmetParams(), hem_fn=None, beak_fn=None):
+@dataclass
+class Seam:
+    """The face seam: the brow line across the front (z as a function of x) and the cheek edges, two
+    meridians at |x| = half_width (measured at brow height). Below the brow and between the cheek
+    edges is the face plate; everything else is the skull."""
+    brow_fn: object          # x -> z
+    half_width: float
+
+
+def build(o: Outlines, p: HelmetParams = HelmetParams(), hem_fn=None, beak_fn=None, seam: Seam = None):
     """-> verts (N, 3), quad faces, info dict. hem_fn(o, x, y) -> raw hem heights replaces
-    hem_heights (before smoothing). beak_fn: see slicer."""
+    hem_heights (before smoothing). beak_fn: see slicer. seam: lay the face seam on mesh edges
+    (info gets face_mask, face_rk, seam_edges, brow_ring, cheek_col)."""
     K = p.K
     P = shape_profiles(o, p)
     brow, z_top = P["brow"], P["z_dome"]
@@ -298,17 +308,46 @@ def build(o: Outlines, p: HelmetParams = HelmetParams(), hem_fn=None, beak_fn=No
     # hem: from a slice near the bottom, read the drawn bottom edge around it
     x0, y0 = slice_at(z_lo + 0.25 * (brow - z_lo))
     hem = (hem_fn or hem_heights)(o, x0, y0)
-    theta = np.arctan2(x0, -(y0 - np.median(y0)))
     hem = smooth_loop(hem, p.hem_sigma)
     hem = np.clip(hem, z_lo, brow - p.min_visor)
+
+    face_cols = np.zeros(K, bool)
+    if seam is None:
+        def z_of(u, k):
+            return hem[k] + u * (z_top - hem[k])
+        i_b, kc = None, None
+    else:
+        # cheek columns: the column whose x at brow height is nearest the face's half-width
+        zb0 = float(seam.brow_fn(0.0))
+        Xb, _ = slice_at(zb0)
+        widest = int(np.argmax(Xb[:K // 2 + 1]))               # front half only: up to the widest point
+        kc = 1 + int(np.argmin(np.abs(Xb[1:max(widest, 1) + 1] - seam.half_width)))
+        face_cols[:kc + 1] = True
+        face_cols[K - kc:] = True
+        # brow height per column: the brow line for face columns, level with the cheek corner behind
+        browk = np.empty(K)
+        for k in range(K):
+            kk = k if face_cols[k] else kc
+            browk[k] = float(seam.brow_fn(Xb[kk]))
+        browk = np.clip(browk, hem + 0.02, z_top - 0.02)
+        # put one ring exactly on the brow (at the mean fraction), split the column there
+        u_b = float(np.mean((browk - hem) / (z_top - hem)))
+        i_b = int(np.clip(np.argmin(np.abs(us - u_b)), 1, len(us) - 3))
+        us = np.concatenate([np.linspace(0, u_b, i_b + 1), np.interp(np.linspace(u_b, 1, len(us) - i_b),
+                                                                     [u_b, 1], [u_b, 1])[1:]])
+
+        def z_of(u, k):
+            if u <= u_b:
+                return hem[k] + (u / u_b) * (browk[k] - hem[k])
+            return browk[k] + (u - u_b) / (1 - u_b) * (z_top - browk[k])
     rings = []
     for u in us[:-1]:
-        zk = hem + u * (z_top - hem)            # per point height for this ring
         pts = np.zeros((K, 3))
         # evaluate the slice at each point's own height
         for k in range(K):
-            X, Y = slice_at(zk[k])
-            pts[k] = (X[k], Y[k], zk[k])
+            zk = z_of(u, k)
+            X, Y = slice_at(zk)
+            pts[k] = (X[k], Y[k], zk)
         rings.append(pts)
     # top: the ridge line, left and right halves meet at x = 0
     # close the dome: the last ring's left and right halves meet on the centre line
@@ -321,17 +360,19 @@ def build(o: Outlines, p: HelmetParams = HelmetParams(), hem_fn=None, beak_fn=No
     verts = np.vstack([rings.reshape(-1, 3), ridge])
     idx = np.arange(R * K).reshape(R, K)
     rid = R * K + np.array([min(k, K - k) for k in range(K + 1)])
-    faces = []
+    faces, rk = [], []
     for r in range(R - 1):
         for k in range(K):
             k2 = (k + 1) % K
             faces.append([idx[r, k], idx[r, k2], idx[r + 1, k2], idx[r + 1, k]])
+            rk.append((r, k))
     for k in range(K):
         k2 = (k + 1) % K
         a_, b_ = rid[k], rid[k + 1]
         if a_ == b_:
             continue
         faces.append([idx[R - 1, k], idx[R - 1, k2], b_, a_])
+        rk.append((R - 1, k))
     # outward winding: check one face against the centre
     c = verts.mean(0)
     f0 = verts[faces[len(faces) // 2]]
@@ -339,8 +380,8 @@ def build(o: Outlines, p: HelmetParams = HelmetParams(), hem_fn=None, beak_fn=No
     if nrm @ (f0.mean(0) - c) < 0:
         faces = [f[::-1] for f in faces]
     # merge the degenerate end quads at the ridge ends into triangles
-    out = []
-    for f in faces:
+    out, out_rk = [], []
+    for f, t in zip(faces, rk):
         g = []
         for v in f:
             if not g or g[-1] != v:
@@ -349,11 +390,23 @@ def build(o: Outlines, p: HelmetParams = HelmetParams(), hem_fn=None, beak_fn=No
             g.pop()
         if len(set(g)) >= 3:
             out.append(g)
-    # edges to crease for subdivision: the visor's centre line (front meridian below the brow) and
-    # the ring nearest the brow (the visor's top edge)
-    brow_ring = int(np.argmin([abs(np.mean(rings[r, :, 2]) - brow) for r in range(R)]))
-    crease = [(idx[r, 0], idx[r + 1, 0]) for r in range(R - 1) if rings[r + 1, 0, 2] <= brow + 0.005]
-    crease += [(idx[brow_ring, k], idx[brow_ring, (k + 1) % K]) for k in range(K)
-               if rings[brow_ring, k, 1] < np.median(rings[brow_ring, :, 1])]
-    return verts, out, dict(brow=brow, z_top=z_top, rings=R, K=K, crest_h=P["crest_h"],
-                            profiles=P, crease=crease)
+            out_rk.append(t)
+    out_rk = np.array(out_rk)
+    info = dict(brow=brow, z_top=z_top, rings=R, K=K, crest_h=P["crest_h"], profiles=P)
+    if seam is None:
+        # edges to crease for subdivision: the visor's centre line (front meridian below the brow)
+        # and the ring nearest the brow (the visor's top edge)
+        brow_ring = int(np.argmin([abs(np.mean(rings[r, :, 2]) - brow) for r in range(R)]))
+        crease = [(idx[r, 0], idx[r + 1, 0]) for r in range(R - 1) if rings[r + 1, 0, 2] <= brow + 0.005]
+        crease += [(idx[brow_ring, k], idx[brow_ring, (k + 1) % K]) for k in range(K)
+                   if rings[brow_ring, k, 1] < np.median(rings[brow_ring, :, 1])]
+        info["crease"] = crease
+        return verts, out, info
+    # face plate = faces below the brow ring between the cheek columns
+    face_mask = np.array([r < i_b and face_cols[k] and face_cols[(k + 1) % K] for r, k in out_rk])
+    seam_edges = [(int(idx[i_b, k]), int(idx[i_b, (k + 1) % K])) for k in range(K)
+                  if face_cols[k] and face_cols[(k + 1) % K]]
+    seam_edges += [(int(idx[r, kk]), int(idx[r + 1, kk])) for kk in (kc, K - kc) for r in range(i_b)]
+    info.update(face_mask=face_mask, face_rk=out_rk, seam_edges=seam_edges, brow_ring=i_b, cheek_col=kc,
+                crease=[(int(idx[r, 0]), int(idx[r + 1, 0])) for r in range(i_b)])
+    return verts, out, info

@@ -1,0 +1,12 @@
+{
+ "mode": "open",
+ "weld": true,
+ "iou": {
+  "front": 0.8538383256785528,
+  "back": 0.867895447571779,
+  "side": 0.8440593460318997
+ },
+ "seam_points": 35,
+ "brow_centre": 1.9359375,
+ "cheek_half_width": 0.09077131025623407
+}

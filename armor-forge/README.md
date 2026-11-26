@@ -23,6 +23,22 @@ Pillow inside it. Find Blender's Python, then install into it:
 `/Applications/Blender.app/Contents/MacOS/Blender` on macOS.) The `tools/*.py` scripts don't need
 Blender; run them with that same Python (or any Python with `pip install -r armor-forge/requirements.txt`).
 
+**Standard helmet (skull + face plate), recommended:** every helmet is built as "Helmet skull" plus
+"Helmet face plate" joined at a face seam (`armor_forge/helmet_recipe.py`). `--face-mode` picks
+`separate` (visor/plate over the opening), `integral` (face is part of the helmet; weld) or `open`
+(open face: the plate is a rim around the opening; weld). Welded modes share the seam's exact points:
+select both, join (Ctrl+J), Merge by Distance. Both objects have a "seam" vertex group and a "weld"
+property.
+
+    blender -b -P armor-forge/blender/build_helmet_recipe.py -- --masks out/helmet/traced \
+        --cams armor-forge/cams.json --art "reference/Embermine Heavy Armor Turnaround.png" \
+        --trace-meta out/helmet/traced/trace.json --face-mode separate --out out/helmet_recipe/embermine
+
+For Thornwood use `--masks out/thornwood/masks --cams out/thornwood/masks/cams.json --trace-meta
+out/thornwood/masks/trace.json` with its art. Leave out `--art`/`--trace-meta` and the seam goes to
+default places (brow at the side profile's step, cheeks at 3/4 of the width). Overview of all modes:
+`out/helmet_recipe/recipe_overview.png`.
+
 **Embermine (has piece masks and a side view):** visor + skull.
 
     "<that python>" armor-forge/tools/trace_concept.py --art "reference/Embermine Heavy Armor Turnaround.png" \

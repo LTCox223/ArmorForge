@@ -239,5 +239,6 @@ def write_masks(out_dir, masks, regs, rgb=HELMET_RGB):
         Image.fromarray(img).save(os.path.join(out_dir, f"{cc.MASK_FILES[v]}.png"))
     json.dump({v: list(ORIGIN) for v in ("front", "back", "side", "side_noarm")},
               open(os.path.join(out_dir, "cams.json"), "w"))
-    json.dump({v: dict(registration=r.as_dict()) for v, r in regs.items()},
-              open(os.path.join(out_dir, "trace.json"), "w"), indent=1)
+    meta = {v: dict(registration=r.as_dict()) for v, r in regs.items()}
+    meta["side_stand_in"] = True          # the side mask is built from the head target, not drawn
+    json.dump(meta, open(os.path.join(out_dir, "trace.json"), "w"), indent=1)

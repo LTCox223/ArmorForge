@@ -156,22 +156,54 @@ def detect_visor(front: ViewData, side: ViewData):
                         y_front, (y_front, ymax))
     z0 += band_edge(gz[keep], gu[keep], z0, k, y_front, (y_front, ymax), outward=1.0)
     top_side = (z0, k, y_front)
-    # front view (folded to |x|)
+    sides, top_front = detect_face_front(front)
+    return VisorLines(rear, top_side, sides, top_front)
+
+
+def outer_peak(a, b, ref, window, a_range=(0.03, 0.14), step=0.003, tol=0.004, prominence=1.3):
+    """Outermost near-vertical line (a = a0 + t (b - ref)) that stands out from its surroundings: its
+    vote is a local maximum and at least `prominence` times the votes 1-2 cm either side. None if
+    there is no such line (gold fading away from the centre is not a line)."""
+    inw = (b >= window[0]) & (b <= window[1])
+    a, b = a[inw], b[inw]
+    xs = np.arange(a_range[0], a_range[1], step)
+    votes = np.array([max(int((np.abs(a - (x + t * (b - ref))) < tol).sum()) for t in np.linspace(-0.3, 0.3, 13))
+                      for x in xs])
+    off = int(round(0.015 / step))
+    peaks = []
+    for i in range(1, len(xs) - 1):
+        if votes[i] < max(votes[i - 1], votes[i + 1]) or votes[i] == 0:
+            continue
+        around = [votes[j] for j in (i - off, i + off) if 0 <= j < len(xs)]
+        if votes[i] >= prominence * max(np.mean(around), 1):
+            peaks.append(xs[i])
+    return float(max(peaks)) if peaks else None
+
+
+def detect_face_front(front: ViewData):
+    """The face's edges from the front view alone, fitted through the gold and moved to the band's
+    outer edge: first the top line z = z0 + k |x| (brow), then, below it, the outer side lines
+    |x| = x0 + t (z - zm). With no clear side line the face spans the helmet's width at the brow."""
     fu, fz = front.gold_points()
     fa = np.abs(fu)
-    _, fsz = front.to_metric(*np.nonzero(front.sil))
+    su, fsz = front.to_metric(*np.nonzero(front.sil))
     fzmin, fzmax = float(fsz.min()), float(fsz.max())
     FH = fzmax - fzmin
-    zmf = fzmin + 0.3 * FH
-    x0, tx, _ = fit_line(fa, fz, (0.03, 0.14), np.linspace(-0.3, 0.3, 13), zmf, (fzmin, fzmin + 0.6 * FH),
-                         pick="outermost")
-    x0 += band_edge(fa, fz, x0, tx, zmf, (fzmin, fzmin + 0.6 * FH), outward=1.0)
-    sides = (x0, tx, zmf)
-    keep = fa < x0
-    z0f, kf, _ = fit_line(fz[keep], fa[keep], (fzmin + 0.3 * FH, fzmin + 0.85 * FH), np.linspace(-1, 1, 41),
-                          0.0, (0.0, x0))
-    z0f += band_edge(fz[keep], fa[keep], z0f, kf, 0.0, (0.0, x0), outward=1.0)
-    return VisorLines(rear, top_side, sides, (z0f, kf))
+    near = fa < 0.14
+    z0f, kf, _ = fit_line(fz[near], fa[near], (fzmin + 0.3 * FH, fzmin + 0.85 * FH), np.linspace(-1, 1, 41),
+                          0.0, (0.0, 0.14))
+    z0f += band_edge(fz[near], fa[near], z0f, kf, 0.0, (0.0, 0.14), outward=1.0)
+    below = fz < z0f + kf * fa - 0.005
+    zmf = 0.5 * (fzmin + z0f)
+    peak = outer_peak(fa[below], fz[below], zmf, (fzmin, z0f))
+    if peak is None:
+        at = np.abs(fsz - z0f) < 0.004
+        x0, tx = float(np.abs(su[at]).max()) - 0.01, 0.0
+    else:
+        x0, tx, _ = fit_line(fa[below], fz[below], (peak - 0.004, peak + 0.0041), np.linspace(-0.3, 0.3, 13),
+                             zmf, (fzmin, z0f), step=0.001)
+        x0 += band_edge(fa[below], fz[below], x0, tx, zmf, (fzmin, z0f), outward=1.0)
+    return (x0, tx, zmf), (z0f, kf)
 
 
 def visor_regions(lines: VisorLines, front: ViewData, side: ViewData):

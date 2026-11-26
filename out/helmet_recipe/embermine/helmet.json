@@ -1,0 +1,12 @@
+{
+ "mode": "separate",
+ "weld": false,
+ "iou": {
+  "front": 0.9476984924623115,
+  "back": 0.8584617441588395,
+  "side": 0.9233535087193624
+ },
+ "seam_points": 41,
+ "brow_centre": 1.9310156250000001,
+ "cheek_half_width": 0.11113281250000001
+}
