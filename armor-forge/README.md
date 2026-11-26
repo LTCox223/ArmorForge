@@ -70,6 +70,34 @@ the original frame, so `build_helmet.py --masks <traced>` uses them unchanged.
 On Embermine the masks were already within 1-2 mm of the painted edge wherever the helmet meets the
 background; where it meets the neck and gorget the edge is not a silhouette and stays as masked.
 
+**Helmet as separate parts from the gold trim** (`armor_forge/helmet_parts.py`,
+`blender/build_helmet_parts.py`). Depth comes from matching heights between the orthographic views:
+the front view gives a part's width at each height, the side view where it starts and ends
+front-to-back. The concept's gold trim marks the part edges:
+
+1. gold pixels (warm, lit, yellowish) are picked out of the front and side views and mapped into the
+   artboard frame;
+2. the visor frame's straight edges are fitted through the gold (tolerates gaps and clutter) and
+   moved to the outer edge of each gold band: front view outer sides `|x| = w(z)` and top V, side
+   view rear edge `y = y_r(z)` and top edge;
+3. **visor**: the slit panel shows in both the front and the side view, so its faces are steeply
+   angled: a wedge from the centre ridge (side outline's front) back to the rear edge at `x = +-w`;
+   top and bottom of each column from both views; ridge creased;
+4. **skull**: the outline with the visor's area cut from the front view (that becomes the face
+   opening's edge) and cropped at the neck-guard rim in the side view; its plan matches the visor's
+   wedge just behind it, fading to a round dome above the visor; anything left in front of the visor
+   is pushed behind it.
+
+    blender -b -P blender/build_helmet_parts.py -- --masks ../out/helmet/traced --cams cams.json \
+        --art "../reference/Embermine Heavy Armor Turnaround.png" \
+        --trace-meta ../out/helmet/traced/trace.json --out ../out/helmet_parts
+
+Output: `helmet_parts.blend` (objects "Helmet visor" and "Helmet skull"), renders, `lines.png` (the
+fitted edges on the concept), `lines.json` (edges + silhouette IoU) and `concept_vs_parts.png`.
+Embermine: IoU against the traced outlines 0.93 front, 0.92 side, 0.85 back; visor 187 verts, skull
+625. Not yet: the brow band and neck-guard rim as their own bands, the comb as its own crest (the dome
+top is pointed because the comb is part of the outline), eye slot and slits.
+
 **Pick the curvature by eye** (`blender/helmet_variants.py`). The outlines don't decide how round or
 boxy the helmet is between the views; this renders a 3 x 3 grid over any two `HelmetParams`, each cell
 a three-quarter render plus plan cuts at visor and skull heights, with the concept beside it:

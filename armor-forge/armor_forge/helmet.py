@@ -99,6 +99,11 @@ def load_outlines(mask_dir, cams_json, s=1600.0):
     f = load_mask(os.path.join(mask_dir, "Front.png"))
     b = load_mask(os.path.join(mask_dir, "Back.png"))
     sd = load_mask(os.path.join(mask_dir, "Side.png"))
+    return outlines_from_masks(f, b, sd, cams, s)
+
+
+def outlines_from_masks(f, b, sd, cams, s=1600.0):
+    """Outlines from boolean front / back / side masks in the artboard frame."""
     pf = profile(f, *cams["front"], s)
     pb = profile(b, *cams["back"], s, sign=-1.0)
     # symmetric half-width: mean of |left| and |right| in each view, then the larger of the two views
@@ -131,6 +136,7 @@ class HelmetParams:
     dome_shift: float = 0.0      # move the dome top back (+) or forward (-), fraction of depth
     min_visor: float = 0.06      # hem stays at least this far below the brow (m)
     hem_sigma: float = 1.5       # hem smoothing around the loop (in points)
+    brow: float = 0.0            # brow height (m); 0 = find it as the side profile's biggest step
 
 
 def find_brow(o: Outlines, search=(0.35, 0.85)):
@@ -205,7 +211,7 @@ def _smooth_split(z, v, at, sigma_m):
 def shape_profiles(o: Outlines, p: "HelmetParams"):
     """Clean, design-level profiles on a common z grid: heavy smoothing (but not across the brow),
     crest split off the top, dome rounded. -> dict of arrays + scalars."""
-    brow = find_brow(o)
+    brow = p.brow if p.brow > 0 else find_brow(o)
     z_lo = max(o.width.z.min(), o.side.z.min())
     z = np.linspace(z_lo, o.z_top, 300)
     a = np.abs(o.width.at(z)[1])
@@ -256,8 +262,9 @@ def smooth_hem(theta, z_raw, order=3, iters=4):
     return A @ coef
 
 
-def slicer(P, p: HelmetParams, K=None):
-    """-> function z -> (X, Y): the plan (top-down) shape of the helmet at height z, K points."""
+def slicer(P, p: HelmetParams, K=None, beak_fn=None):
+    """-> function z -> (X, Y): the plan (top-down) shape of the helmet at height z, K points.
+    beak_fn(z, a, yf, yb, n_front) -> beak overrides the beak at each height."""
     K = K or p.K
     zz, a_, yf_, yb_, brow = P["z"], P["a"], P["yf"], P["yb"], P["brow"]
     t_fine = np.linspace(0, 2 * np.pi, 721)[:-1]
@@ -267,13 +274,15 @@ def slicer(P, p: HelmetParams, K=None):
         yf, yb = np.interp(z, zz, yf_), np.interp(z, zz, yb_)
         w = np.clip((brow - z) / p.brow_blend + 0.5, 0, 1)          # 1 in the visor, 0 above the brow
         nf = w * p.n_visor + (1 - w) * p.n_skull
-        x, y = plan_curve(a, yf, yb, t_fine, nf, p.n_back, p.beak * w)
+        beak = p.beak * w if beak_fn is None else beak_fn(z, a, yf, yb, nf)
+        x, y = plan_curve(a, yf, yb, t_fine, nf, p.n_back, beak)
         return resample_closed(x, y, K)
     return slice_at
 
 
-def build(o: Outlines, p: HelmetParams = HelmetParams()):
-    """-> verts (N, 3), quad faces, info dict."""
+def build(o: Outlines, p: HelmetParams = HelmetParams(), hem_fn=None, beak_fn=None):
+    """-> verts (N, 3), quad faces, info dict. hem_fn(o, x, y) -> raw hem heights replaces
+    hem_heights (before smoothing). beak_fn: see slicer."""
     K = p.K
     P = shape_profiles(o, p)
     brow, z_top = P["brow"], P["z_dome"]
@@ -282,13 +291,13 @@ def build(o: Outlines, p: HelmetParams = HelmetParams()):
     a_, yf_, yb_ = P["a"], P["yf"], P["yb"]
     arc = np.concatenate([[0], np.cumsum(np.hypot(np.diff(zz), np.hypot(np.diff(a_), np.diff(yf_))))])
     n_rings = max(4, int(np.ceil(arc[-1] / p.ring_spacing)))
-    slice_at = slicer(P, p)
+    slice_at = slicer(P, p, beak_fn=beak_fn)
 
     # ring parameter u in [0, 1]: u = 0 at the hem (varies around), 1 at the top ridge
     us = np.interp(np.linspace(0, arc[-1], n_rings + 1), arc, np.linspace(0, 1, len(zz)))
     # hem: from a slice near the bottom, read the drawn bottom edge around it
     x0, y0 = slice_at(z_lo + 0.25 * (brow - z_lo))
-    hem = hem_heights(o, x0, y0)
+    hem = (hem_fn or hem_heights)(o, x0, y0)
     theta = np.arctan2(x0, -(y0 - np.median(y0)))
     hem = smooth_loop(hem, p.hem_sigma)
     hem = np.clip(hem, z_lo, brow - p.min_visor)
