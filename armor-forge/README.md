@@ -174,6 +174,27 @@ Thornwood result (`out/thornwood/concept_vs_helmet.png`): front/back silhouette 
 brow, rim), side profile guessed; the small flame spikes are smoothed away, the visor's lower tips
 (which hang over the gorget) are cut off, and the parts builder can't run (it needs a side view).
 
+**Pauldrons** (`armor_forge/pauldron.py`, `blender/build_pauldrons.py`). Each pauldron is a cap
+plus lame(s), each a clean quad grid with open edges; built for the left (+x) and mirrored:
+
+* the arm as drawn (sleeve + vambrace colours) gives the arm axis and radius - the concept's arm need
+  not match the mannequin's pose;
+* cap: rays from the shoulder joint (the axis point under the cap) over a grid running neck -> over
+  the top -> down the arm (rows) and front -> back (columns); the cap's visual hull (its colour in
+  front, back and side) gives the surface, and it covers where the hull reaches clearly beyond the
+  shoulder;
+* lames: the same around the arm axis (rows along the arm, columns around it); the top row reaches
+  `overlap` up under the cap and stays `tuck` inside it.
+
+    blender -b -P armor-forge/blender/build_pauldrons.py -- --masks input/Masks --cams armor-forge/cams.json \
+        --mannequin armor-forge/mannequin.json --art "reference/Embermine Heavy Armor Turnaround.png" \
+        --trace-meta out/helmet/traced/trace.json --out out/pauldrons
+
+Output: `pauldrons.blend` (collection "Pauldrons": cap and lame 1, L and R; "Reference": the torso
+and the drawn arm), renders and `concept_vs_pauldrons.png` (the built outline in red on the concept).
+Embermine: IoU 0.78 front / 0.81 back / 0.78 side. `mannequin.json` is the GunHound fitting body
+exported from `blender/Embermine_Modular_Geometry.blend`.
+
 **Pick the curvature by eye** (`blender/helmet_variants.py`). The outlines don't decide how round or
 boxy the helmet is between the views; this renders a 3 x 3 grid over any two `HelmetParams`, each cell
 a three-quarter render plus plan cuts at visor and skull heights, with the concept beside it:
