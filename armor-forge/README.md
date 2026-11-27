@@ -193,19 +193,26 @@ lip), renders, `concept_vs_pauldrons.png` (fitted edge loop red, creases blue, o
 side), edge within 9-11 mm of the trim; lame 0.87 / 0.78 / 0.90. Crease positions are fixed defaults for now (`PanelLayout`).
 Takes about two minutes (the fit).
 
-**Cuirass, first attempt** (`blender/build_chest.py`). Breastplate and backplate as two trimmed
-plates (left/right symmetric): the breastplate fitted to the front view and the front half of the
-side view, the backplate to the back view and the back half; anything drawn over them (gorget,
-pauldrons, belt, arms) may hide them; only gold near the outline counts as trim (the chest's gold
-chevron is decoration). The arm hides most of the side view, so the mannequin's torso guides the
-depth (`plate.BodyProfile`: stay 2 cm off it, no more than 3.5 cm beyond that). Embermine: front IoU
-0.96, back 0.94. Known limit: a four-sided plate can't make armholes, so the plates don't wrap round
-to meet at the sides; the cuirass needs its own model (neckline, shoulder straps, armholes, side
-seams, waist).
+**Cuirass** (`armor_forge/cuirass.py`, `blender/build_chest.py`), after a hand-made base: one barrel
+round the torso, rings from the waist to the shoulders, a flat band over the shoulders inset to the
+neck opening (lower at the front), and an armhole cut in each side on mesh edges, rounded to an
+ellipse, with a strap of plate left above it. Built as the left half with a Mirror modifier
+(clipping, merge); trim faces round the armholes and the waist get the trim material.
+
+* width: the cuirass colour in the front and back views; above the armpit (hidden by pauldrons)
+  the sides carry straight up;
+* front: the side view's front edge (the breastplate shows there); back: the side view where it
+  shows, else the torso's back plus the front's clearance (the arm hides it);
+* armpit: where the drawn sleeve meets the cuirass (front view); armhole front/back: the sleeve in
+  the side view, limited to the columns that face sideways.
 
     blender -b -P armor-forge/blender/build_chest.py -- --masks input/Masks --cams armor-forge/cams.json \
         --art "reference/Embermine Heavy Armor Turnaround.png" --trace-meta out/helmet/traced/trace.json \
         --mannequin armor-forge/mannequin.json --out out/chest
+
+Embermine: IoU front 0.97, back 0.99 (pieces drawn over it may hide it). `CuirassParams`: `cols`,
+`ring_step`, `yoke`, `neck_drop`, `n_front`/`n_back`, `armhole_side`, ... via `--param`.
+`out/chest/yours_vs_generated.png` compares it with the hand-made ChestTrial2.
 
 **Artistic depth (the side view is drawn slightly turned).** Concept artists turn pieces a little
 toward the viewer in the side view to show depth, so its interior lines and trim show faces a true
